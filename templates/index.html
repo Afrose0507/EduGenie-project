@@ -14,14 +14,133 @@
 </nav>
 <div class="container">
   <div class="tabs">
-    <button class="tab active" onclick="showTab('qa', this)">🤖 Ask a Question</button>
-    <button class="tab" onclick="showTab('explain', this)">💡 Explain Concept</button>
-    <button class="tab" onclick="showTab('quiz', this)">❓ Generate Quiz</button>
-    <button class="tab" onclick="showTab('summarize', this)">📝 Summarize</button>
-    <button class="tab" onclick="showTab('learn', this)">🗺️ Learning Path</button>
+    <button class="tab active" onclick="showTab('qa',this)">🤖 Ask a Question</button>
+    <button class="tab" onclick="showTab('explain',this)">💡 Explain Concept</button>
+    <button class="tab" onclick="showTab('quiz',this)">❓ Generate Quiz</button>
+    <button class="tab" onclick="showTab('summarize',this)">📝 Summarize</button>
+    <button class="tab" onclick="showTab('learn',this)">🗺️ Learning Path</button>
   </div>
   <div id="qa" class="tab-content active">
     <div class="card">
       <h2>🤖 Ask EduGenie a Question</h2>
       <p class="subtitle">Get smart, accurate answers on any academic topic</p>
-      <textarea id="qaInput" placeholder="e.g. Which is
+      <textarea id="qaInput" placeholder="e.g. Which is the largest ocean?"></textarea>
+      <button class="btn" onclick="submit('qa','question',qaInput,'qaResult')">Get Answer</button>
+      <div id="qaResult" class="result hidden"></div>
+    </div>
+  </div>
+  <div id="explain" class="tab-content">
+    <div class="card">
+      <h2>💡 Explain a Concept</h2>
+      <p class="subtitle">Get simplified explanations of complex topics</p>
+      <textarea id="explainInput" placeholder="e.g. Pythagoras Theorem, Photosynthesis..."></textarea>
+      <button class="btn" onclick="submit('explain','topic',explainInput,'explainResult')">Explain It</button>
+      <div id="explainResult" class="result hidden"></div>
+    </div>
+  </div>
+  <div id="quiz" class="tab-content">
+    <div class="card">
+      <h2>❓ Generate Quiz</h2>
+      <p class="subtitle">3 MCQs with 4 options each</p>
+      <textarea id="quizInput" placeholder="e.g. Solar System, World War 2..."></textarea>
+      <button class="btn" onclick="submitQuiz()">Generate Quiz</button>
+      <div id="quizResult" class="quiz-container hidden"></div>
+    </div>
+  </div>
+  <div id="summarize" class="tab-content">
+    <div class="card">
+      <h2>📝 Summarize Content</h2>
+      <p class="subtitle">Paste any long text and get a concise summary</p>
+      <textarea id="summarizeInput" placeholder="Paste a long paragraph here..." style="height:160px"></textarea>
+      <button class="btn" onclick="submit('summarize','passage',summarizeInput,'summarizeResult')">Summarize</button>
+      <div id="summarizeResult" class="result hidden"></div>
+    </div>
+  </div>
+  <div id="learn" class="tab-content">
+    <div class="card">
+      <h2>🗺️ Learning Path Generator</h2>
+      <p class="subtitle">Get a personalized roadmap from beginner to advanced</p>
+      <textarea id="learnInput" placeholder="e.g. Python, Machine Learning, SQL..."></textarea>
+      <button class="btn" onclick="submit('learn/recommendations','topic',learnInput,'learnResult')">Get Learning Path</button>
+      <div id="learnResult" class="result hidden"></div>
+    </div>
+  </div>
+</div>
+<footer>🧞 EduGenie &nbsp;•&nbsp; Powered by Google Gemini &nbsp;•&nbsp; Built for learners everywhere 🌍</footer>
+<script>
+function showTab(name,el){
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(name).classList.add('active');
+  el.classList.add('active');
+}
+async function submit(endpoint,fieldName,inputEl,resultId){
+  const input=inputEl.value.trim();
+  if(!input){alert('Please enter some text first!');return;}
+  const resultEl=document.getElementById(resultId);
+  resultEl.classList.remove('hidden');
+  resultEl.innerHTML='<div class="loading"><div class="spinner"></div> EduGenie is thinking...</div>';
+  const formData=new FormData();
+  formData.append(fieldName,input);
+  formData.append('api_key','');
+  try{
+    const res=await fetch('/'+endpoint,{method:'POST',body:formData});
+    const data=await res.json();
+    resultEl.innerHTML='<div class="answer">'+marked(data.result)+'</div>';
+  }catch(e){
+    resultEl.innerHTML='<div class="error">❌ Error: '+e.message+'</div>';
+  }
+}
+async function submitQuiz(){
+  const input=document.getElementById('quizInput').value.trim();
+  if(!input){alert('Please enter a topic first!');return;}
+  const resultEl=document.getElementById('quizResult');
+  resultEl.classList.remove('hidden');
+  resultEl.innerHTML='<div class="loading"><div class="spinner"></div> Generating quiz...</div>';
+  const formData=new FormData();
+  formData.append('passage',input);
+  formData.append('api_key','');
+  try{
+    const res=await fetch('/quiz',{method:'POST',body:formData});
+    const data=await res.json();
+    const questions=data.result;
+    if(questions[0]&&questions[0].error){resultEl.innerHTML='<div class="error">❌ '+questions[0].error+'</div>';return;}
+    let html='<h3 style="color:#6366f1;margin-bottom:16px;">📋 Quiz: '+input+'</h3>';
+    questions.forEach((q,i)=>{
+      html+=`<div class="question-card" id="q${i}"><div class="question-text">Q${i+1}. ${q.question}</div><div class="options">`;
+      Object.entries(q.options).forEach(([key,val])=>{
+        html+=`<button class="option-btn" onclick="checkAnswer(${i},'${key}','${q.answer}')" id="opt${i}${key}"><span class="opt-key">${key}</span> ${val}</button>`;
+      });
+      html+=`</div><div class="feedback hidden" id="fb${i}"></div></div>`;
+    });
+    resultEl.innerHTML=html;
+  }catch(e){
+    resultEl.innerHTML='<div class="error">❌ Error: '+e.message+'</div>';
+  }
+}
+function checkAnswer(qIndex,selected,correct){
+  const fb=document.getElementById('fb'+qIndex);
+  document.querySelectorAll(`#q${qIndex} .option-btn`).forEach(btn=>btn.disabled=true);
+  document.getElementById('opt'+qIndex+correct).classList.add('correct');
+  if(selected!==correct){
+    document.getElementById('opt'+qIndex+selected).classList.add('wrong');
+    fb.innerHTML='❌ Wrong! Correct answer is <strong>'+correct+'</strong>';
+    fb.className='feedback wrong-fb';
+  }else{
+    fb.innerHTML='✅ Correct! Well done!';
+    fb.className='feedback correct-fb';
+  }
+}
+function marked(text){
+  return text
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,'<em>$1</em>')
+    .replace(/^## (.*$)/gm,'<h3>$1</h3>')
+    .replace(/^# (.*$)/gm,'<h2>$1</h2>')
+    .replace(/^- (.*$)/gm,'<li>$1</li>')
+    .replace(/\n\n/g,'<br><br>')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
