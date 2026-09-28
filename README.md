@@ -2,6 +2,9 @@
 
 An AI-powered educational assistant built with FastAPI and Google Gemini API.
 
+## 🌐 Live Demo
+👉 **[Click here to open EduGenie](https://edugenie-project-z7c2.onrender.com)**
+
 ## ✨ Features
 - 🤖 **Ask a Question** - Get smart answers on any topic
 - 💡 **Explain Concept** - Simplified explanations of complex topics
@@ -23,22 +26,9 @@ uvicorn main:app --reload
 Then open: http://127.0.0.1:8000
 
 ## 🔑 Setup
-1. Get a free Gemini API key from https://aistudio.google.com/apikey
-2. Enter it in the app sidebar when prompted
+Get a free Gemini API key from https://aistudio.google.com/apikey
 
-## 📁 Project Structure
-```
-EduGenie/
-  main.py                 - FastAPI app & API endpoints
-  qna.py                  - Question & Answer module
-  explanation_module.py   - Concept explanation module
-  quiz_module.py          - Quiz generation module
-  summary_module.py       - Text summarization module
-  learning_path.py        - Learning path recommendations
-  templates/index.html    - HTML frontend
-  static/style.css        - CSS styling
-  requirements.txt        - Python dependencies
-```
-
-## 👨‍💻 Built With
-Google Gemini API | FastAPI | Python
+## 👥 Team
+- Team No: 7
+- Team Leader: M. AFROSE
+- Members: MANOHAR.E, MURUGAN.S, MUSHARAF.B
