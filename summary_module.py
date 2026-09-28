@@ -1,14 +1,15 @@
 ﻿import google.generativeai as genai
 
 def summarize_text(passage: str, api_key: str) -> str:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3.8-flash")
-    prompt = f"""You are EduGenie, an expert summarizer.
-Summarize the following educational passage into a concise, clear, and easy-to-understand version.
-Retain all key points and important information. Remove unnecessary details.
-Format with bullet points for clarity.
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        prompt = f"""Summarize the following educational passage into clear bullet points.
+Keep all key information but remove unnecessary details.
 
 Passage:
 {passage}"""
-    response = model.generate_content(prompt)
-    return response.text
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
