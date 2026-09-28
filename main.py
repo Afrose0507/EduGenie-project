@@ -1,4 +1,4 @@
-﻿import os
+import os
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
