@@ -1,28 +1,33 @@
 import google.generativeai as genai
+import urllib.request
+import json
 import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
-SYSTEM_INSTRUCTION = """You are EduGenie, an expert AI learning assistant dedicated exclusively to providing clear, factual, and direct academic answers to students.
+SYSTEM_INSTRUCTION = """You are EduGenie, an expert AI learning assistant designed specifically for computer science and engineering college students.
 
 STRICT OPERATIONAL DIRECTIVES:
-1. THE STUDENT'S QUESTION IS THE SOLE SOURCE OF TRUTH. Always answer what the student actually asked first.
-2. RESPONSE PRIORITY & STRUCTURE:
-   - PRIORITY 1: Direct answer to the question with factual definitions and core concepts.
-   - PRIORITY 2: Factual explanation and comprehensive breakdown of the core functions/components (e.g., if asked about an Operating System and its main functions, explicitly name and explain Process Management, Memory Management, File Management, Device Management, Security, and User Interface).
-   - PRIORITY 3: Concrete key points, examples, or technical details when useful.
-   - PRIORITY 4: (Optional) A brief, relevant student study tip ONLY at the very end.
-3. NEVER PRODUCE GENERIC EDUCATIONAL FILLER:
-   - NEVER start with or use generic phrases like "This concept is a fundamental topic in its academic discipline", "Prioritize understanding core definitions", "Review your textbook", or "Practice exam questions" in place of the actual answer.
-   - Always deliver real, factual, domain-specific knowledge immediately in the first paragraph.
-4. CALIBRATION BY QUESTION TYPE:
-   - For arithmetic or direct factual questions (e.g. 'What is 15 × 8?', 'Who was the first person to walk on the Moon?'), provide an immediate, direct, concise, and accurate answer first (e.g., '15 × 8 = 120').
-   - For multi-part conceptual questions (e.g. 'What is an operating system, and what are its main functions?'), address every part of the question factually and thoroughly.
-5. NO TOPIC DRIFT: Under no circumstances introduce unrelated individuals, political figures, specific military/intelligence facilities, or tangential news events.
-6. SPELLING TOLERANCE: If the student's question contains typographical or spelling mistakes (e.g., 'operatng system', 'cybarsecurity', 'pyton', 'hadop'), intelligently deduce the intended academic concept and answer that intended question directly.
-7. AMBIGUOUS QUERIES: If a question is genuinely ambiguous or too incomplete to understand (e.g. 'it', 'why?', 'tell me more'), politely ask the student for clarification instead of guessing or hallucinating an unrelated topic.
-8. STATELESSNESS: Treat every question as completely fresh and independent. Do NOT let previous questions or topics contaminate the new answer.
-9. TONE: Clear, encouraging, objective, and student-focused."""
+1. THE STUDENT'S QUESTION IS THE SOLE SOURCE OF TRUTH:
+   - Answer the EXACT question asked directly, accurately, and factually.
+   - Do NOT drift to coincidental keyword matches or unrelated individuals/topics.
+2. RESPONSE STRUCTURE (CSE STUDENT-FOCUSED):
+   - Definition: Precise, clear academic definition of the subject.
+   - Explanation: Deep conceptual explanation using appropriate technical terminology explained simply.
+   - Core Components / Differences: Detailed breakdown, functions, or structured comparison table when comparing concepts (e.g., Process vs Thread).
+   - Real-World Example: Relatable, concrete computing example (e.g., Web browser tabs, word processors, OS kernel).
+   - Short Summary: A memorable student-friendly takeaway suitable for exams and viva.
+3. ABSOLUTE PROHIBITION ON GENERIC FILLER:
+   - NEVER use generic phrases such as "This concept is a fundamental topic in its academic discipline", "Review related textbook chapters", or "Prioritize understanding core definitions" in place of the answer.
+   - NEVER provide generic educational advice instead of answering the factual question.
+4. NO UNWANTED CONTENT:
+   - Strictly avoid political figures, unrelated facilities (like Utah Data Center), celebrities, or news events unless the student explicitly asks about them.
+5. CALIBRATION:
+   - For direct math (e.g., 'What is 15 × 8?'), give the direct answer immediately (e.g., '15 × 8 = 120').
+   - For technical questions (e.g. 'What is the difference between a process and a thread?'), cover all requested parts thoroughly with definitions, differences, examples, and summaries.
+6. SPELLING TOLERANCE: Intelligently understand misspelled terms (e.g. 'proces and thred', 'operatng system') and answer the intended question.
+7. STATELESSNESS: Treat each question independently without contamination from previous queries.
+8. TONE: Clear, encouraging, technically rigorous, and student-friendly."""
 
 def evaluate_simple_math(question: str):
     """Directly evaluates simple arithmetic expressions accurately."""
@@ -61,6 +66,8 @@ def is_answer_relevant(question: str, answer: str) -> bool:
         return False
     if ('operating system' in q_clean or re.search(r'\bos\b', q_clean)) and 'operating system' not in a_clean and 'os' not in a_clean:
         return False
+    if 'process' in q_clean and 'thread' in q_clean and ('process' not in a_clean or 'thread' not in a_clean):
+        return False
         
     # Math question validation
     if re.search(r'\d+\s*[\+\-\*\/×÷x]\s*\d+', q_clean):
@@ -74,7 +81,7 @@ def is_answer_relevant(question: str, answer: str) -> bool:
     # Extract significant subject words from question (> 3 chars, ignoring stop words)
     stop_words = {'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how', 'does', 
                   'explain', 'tell', 'about', 'define', 'give', 'detail', 'detailed', 'mean', 'meaning',
-                  'main', 'functions', 'function', 'and', 'are', 'its'}
+                  'main', 'functions', 'function', 'and', 'are', 'its', 'difference', 'between', 'with', 'simple', 'example'}
     keywords = [w for w in re.findall(r'[a-zA-Z0-9]+', q_clean) if w not in stop_words and len(w) > 2]
     
     if keywords:
@@ -83,10 +90,8 @@ def is_answer_relevant(question: str, answer: str) -> bool:
         
     return True
 
-def call_gemini(prompt: str, api_key: str):
-    """Invokes Google Gemini with clean multi-model fallback."""
-    if not api_key:
-        return None
+def call_gemini_sdk(prompt: str, api_key: str):
+    """Invokes Google Gemini via official SDK."""
     try:
         genai.configure(api_key=api_key)
         for model_name in MODELS:
@@ -105,22 +110,134 @@ def call_gemini(prompt: str, api_key: str):
                     response = model.generate_content(combined_prompt)
                     if response and response.text and response.text.strip():
                         return response.text.strip()
-                except Exception:
+                except Exception as inner_e:
+                    print(f"[Gemini SDK] Model {model_name} failed: {inner_e}")
                     continue
     except Exception as e:
-        print(f"Gemini configuration error: {e}")
+        print(f"[Gemini SDK Config Error]: {e}")
     return None
 
+def call_gemini_rest(prompt: str, api_key: str):
+    """Direct HTTP fallback using Google Generative Language REST API."""
+    for model_name in ["gemini-1.5-flash", "gemini-2.0-flash"]:
+        payload = {
+            "contents": [{"parts": [{"text": f"{SYSTEM_INSTRUCTION}\n\nStudent Question: {prompt}"}]}]
+        }
+        data = json.dumps(payload).encode("utf-8")
+        
+        # Method 1: Using x-goog-api-key header
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            req = urllib.request.Request(
+                url, 
+                data=data, 
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
+            )
+            with urllib.request.urlopen(req, timeout=12) as res:
+                res_data = json.loads(res.read().decode("utf-8"))
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text = "".join(p.get("text", "") for p in parts).strip()
+                    if text:
+                        return text
+        except Exception as e:
+            print(f"[Gemini REST Header {model_name}]: {e}")
+
+        # Method 2: Using query parameter
+        try:
+            url_param = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            req = urllib.request.Request(url_param, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=12) as res:
+                res_data = json.loads(res.read().decode("utf-8"))
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text = "".join(p.get("text", "") for p in parts).strip()
+                    if text:
+                        return text
+        except Exception as e:
+            print(f"[Gemini REST Param {model_name}]: {e}")
+            
+    return None
+
+def call_gemini(prompt: str, api_key: str):
+    """Calls Gemini via SDK, with automatic REST fallback."""
+    if not api_key:
+        return None
+    # 1. Try SDK
+    res = call_gemini_sdk(prompt, api_key)
+    if res:
+        return res
+    # 2. Try REST
+    return call_gemini_rest(prompt, api_key)
+
 def fallback_answer(question: str) -> str:
-    """Educational fallback that strictly answers the exact question with real facts, or clearly states AI unavailability."""
+    """Provides high-quality CSE syllabus answers or a clean student-facing notice without generic filler."""
     q_lower = question.lower().strip()
     
     # 1. Simple Math
     math_ans = evaluate_simple_math(question)
     if math_ans:
         return math_ans
-        
-    # 2. Operating System & Functions
+
+    # 2. Process vs Thread
+    if ('process' in q_lower and 'thread' in q_lower) or ('difference between a process and a thread' in q_lower):
+        return """### 🔄 Difference Between a Process and a Thread
+
+---
+
+### 1. What is a Process?
+A **Process** is an active program in execution.
+- When an application (like Google Chrome or Python) is stored on your storage drive (SSD/HDD), it is a passive program. Once loaded into RAM and scheduled on the CPU, it becomes an active **Process**.
+- Every process possesses its own **independent and isolated address space**, comprising its own Code segment, Data segment, Heap (dynamic memory), and Stack.
+- The operating system maintains and tracks each process through a dedicated data structure called the **Process Control Block (PCB)**.
+
+---
+
+### 2. What is a Thread?
+A **Thread** is the smallest unit of CPU execution within a process, often termed a **lightweight process (LWP)**.
+- Multiple threads can exist and execute concurrently within a single process.
+- All threads belonging to the same process **share the same address space, global variables, code segment, and open files**.
+- However, each individual thread has its own private **Thread ID, Program Counter (PC), Register set, and Stack**.
+
+---
+
+### 3. Key Differences: Process vs. Thread
+
+| Feature | Process | Thread |
+| :--- | :--- | :--- |
+| **Definition** | An independent executing program in memory. | A lightweight path of execution within a process. |
+| **Memory Space** | Has its own separate, isolated virtual address space. | Shares the memory space and resources of its parent process. |
+| **Creation & Termination** | Heavyweight: Higher resource overhead and takes more time to create. | Lightweight: Faster to create, start, and terminate. |
+| **Context Switching** | Slower context switching (requires reloading memory pages and cache). | Faster context switching (no memory address space swap required). |
+| **Communication** | Requires Inter-Process Communication (IPC) (e.g., Pipes, Sockets, Shared Memory). | Direct and fast communication via shared variables in memory. |
+| **Fault Isolation** | High: If one process crashes, other processes continue running safely. | Low: If one thread crashes or corrupts memory, it can bring down the entire process. |
+| **Control Block** | Managed by OS via **PCB** (Process Control Block). | Managed by OS via **TCB** (Thread Control Block). |
+
+---
+
+### 4. Simple Real-World Example
+
+#### 🌐 Example 1: The Modern Web Browser
+- When you launch your **Web Browser**, it starts as a **Process**.
+- Inside the browser window, multiple **Threads** run concurrently:
+  - **Thread 1:** Listens for your mouse clicks and keystrokes (User Interface).
+  - **Thread 2:** Fetches and streams video content from YouTube.
+  - **Thread 3:** Downloads a lecture PDF in the background.
+Because all three tasks share the same browser memory, switching between them is lightning-fast!
+
+#### 📝 Example 2: Microsoft Word / Google Docs
+- The Word application running on your PC is a **Process**.
+- Inside Word, **Thread A** captures your typing, **Thread B** continuously checks spelling and grammar, and **Thread C** automatically saves drafts to the hard drive in the background.
+
+---
+
+### 5. Short Student-Friendly Summary (Viva Tip)
+- Think of a **Process** as a **House**: It has its own private address, rooms, and fenced boundary.
+- Think of **Threads** as **People living inside that house**: They share the same kitchen, living room, and resources, but each person does a different chore at the exact same time!"""
+
+    # 3. Operating System & Functions
     if 'operating system' in q_lower or re.search(r'\bos\b', q_lower):
         return """### 💻 What is an Operating System (OS)?
 
@@ -135,7 +252,7 @@ Without an operating system, a computer cannot function because application prog
 1. **Process Management:**
    - **Creation & Execution:** Creates, schedules, and terminates user and system processes.
    - **CPU Scheduling:** Allocates CPU time to active processes using algorithms (e.g., Round Robin, Priority Scheduling, Shortest Job First).
-   - **Synchronization & Deadlock Handling:** Coordinates concurrently running processes to prevent resource conflicts and system deadlocks.
+   - **Synchronization & Deadlock Handling:** Coordinates concurrently running processes to prevent race conditions and system deadlocks.
 
 2. **Memory Management (RAM):**
    - **Allocation & Tracking:** Tracks every byte of primary memory (RAM) and dynamically allocates space to active programs.
@@ -167,135 +284,144 @@ Without an operating system, a computer cannot function because application prog
 ### Summary:
 The Operating System functions as the traffic controller and resource manager of the computer, ensuring efficient, fair, and secure utilization of system hardware by all programs."""
 
-    # 3. Moon landing
-    if 'moon' in q_lower and ('first' in q_lower or 'walk' in q_lower):
-        return """**Neil Armstrong** was the first person to walk on the Moon. 
+    # 4. Deadlock in OS
+    if 'deadlock' in q_lower:
+        return """### 🔒 Deadlock in Operating Systems
 
-He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 11** mission, famously declaring: *"That's one small step for man, one giant leap for mankind."*"""
+A **Deadlock** is a state in an operating system where a set of processes are permanently blocked because each process is holding a resource and waiting for another resource acquired by another process.
 
-    # 4. Data Cybersecurity
+---
+
+### The 4 Coffman Necessary Conditions for Deadlock:
+1. **Mutual Exclusion:** At least one resource must be held in a non-shareable mode (only one process can use it at a time).
+2. **Hold and Wait:** A process must be holding at least one resource and actively waiting to acquire additional resources held by other processes.
+3. **No Preemption:** Resources cannot be forcibly taken from a process; they can only be released voluntarily after the process completes its task.
+4. **Circular Wait:** A closed chain of processes exists such that each process holds at least one resource that is needed by the next process in the cycle (P0 waits for P1, P1 waits for P2 ... Pn waits for P0).
+
+---
+
+### Simple Example:
+Two trains approaching each other on the same single railway track. Neither can move forward until the other reverses, leading to a complete standstill!"""
+
+    # 5. ACID Properties in DBMS
+    if 'acid' in q_lower and ('dbms' in q_lower or 'database' in q_lower or 'properties' in q_lower):
+        return """### 💾 ACID Properties in DBMS
+
+In Database Management Systems, **ACID** properties guarantee that database transactions are processed reliably:
+
+1. **Atomicity ("All or Nothing"):**
+   - A transaction must either complete fully or not happen at all. If any step fails (e.g., power loss during money transfer), the entire transaction is rolled back.
+2. **Consistency:**
+   - The database must transition from one valid state to another, maintaining all integrity constraints and rules.
+3. **Isolation:**
+   - Concurrently executing transactions must execute independently without interfering with one another. Intermediate states are invisible to other transactions.
+4. **Durability:**
+   - Once a transaction is committed, its changes are permanently recorded in non-volatile storage, surviving subsequent system failures."""
+
+    # 6. Data Cybersecurity & Cybersecurity
     if 'data cybersecurity' in q_lower or ('data' in q_lower and 'cybersecurity' in q_lower and 'utah' not in q_lower):
         return """### 🛡️ What is Data Cybersecurity?
 
-**Data Cybersecurity** (often called **Data Security**) is the practice of protecting digital data from unauthorized access, corruption, theft, or exposure across its entire lifecycle.
+**Data Cybersecurity** (or **Data Security**) is the specialized discipline of protecting digital assets and confidential information from unauthorized access, corruption, exfiltration, or destruction across its entire lifecycle.
 
 ---
 
-### Core Pillars of Data Cybersecurity:
-1. **Confidentiality:** Ensuring only authorized users and systems can read sensitive data (using encryption like AES-256).
-2. **Integrity:** Ensuring data remains accurate, complete, and untampered with (using hashing and checksums).
-3. **Availability:** Ensuring legitimate users can reliably access their data whenever needed (using backups and redundancy).
+### Core Pillars of Data Cybersecurity (CIA Triad):
+1. **Confidentiality:** Preventing unauthorized disclosure of private data using cryptographic algorithms (e.g., AES-256 encryption, TLS protocols).
+2. **Integrity:** Ensuring data remains accurate, authentic, and untampered with (using SHA-256 cryptographic hashing and digital signatures).
+3. **Availability:** Ensuring authenticated users have timely, uninterrupted access to essential data (via automated backups, load balancing, and disaster recovery).
 
 ---
 
-### Common Threats:
-- **Ransomware:** Malware that encrypts files and demands ransom.
-- **Data Breaches:** Unauthorized exfiltration of databases or personal records.
-- **Phishing:** Social engineering attacks tricking users into revealing credentials."""
+### Common Cyber Threats:
+- **Ransomware:** Encrypts vital databases and demands extortion fees.
+- **SQL Injection (SQLi):** Malicious queries injected into web forms to extract database records.
+- **Phishing:** Social engineering attacks designed to compromise administrative credentials."""
 
-    # 5. Cybersecurity (General)
     if 'cybersecurity' in q_lower and 'utah' not in q_lower:
         return """### 🛡️ What is Cybersecurity?
 
-**Cybersecurity** is the practice of protecting internet-connected systems—including hardware, software, networks, and data—from digital attacks and unauthorized access.
+**Cybersecurity** is the practice of defending internet-connected systems—including hardware, software, networks, and data—from malicious digital attacks and unauthorized intrusion.
 
 ---
 
 ### Key Areas of Cybersecurity:
-- **Network Security:** Defending computer networks from intruders and malicious software.
-- **Application Security:** Keeping software and apps free from vulnerabilities.
-- **Information Security:** Protecting data integrity and privacy both in storage and in transit.
-- **Operational Security:** Managing permissions and policies governing how data assets are handled.
+- **Network Security:** Securing corporate networks against unauthorized entry using Firewalls, IDS/IPS, and VPNs.
+- **Application Security:** Writing secure code free from vulnerabilities (e.g., buffer overflows, XSS, CSRF).
+- **Endpoint Security:** Protecting end-user devices (laptops, phones, servers) with EDR and antivirus software.
+- **Cloud Security:** Implementing IAM policies and zero-trust architectures on cloud platforms (AWS, Azure, GCP)."""
+
+    # 7. Photosynthesis
+    if 'photosynthesis' in q_lower:
+        return """### 🌿 What is Photosynthesis?
+
+**Photosynthesis** is the biological process through which green plants, algae, and certain cyanobacteria synthesize chemical energy (glucose) using solar light energy, carbon dioxide, and water.
 
 ---
 
-### Why It Matters:
-As academic institutions, businesses, and governments rely heavily on digital platforms, cybersecurity ensures safety against financial theft, service disruption, and privacy violations."""
+### Biochemical Equation:
+$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} + \\text{Light Energy} \\longrightarrow \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$
 
-    # 6. Utah Data Center
-    if 'utah data center' in q_lower or ('utah' in q_lower and 'center' in q_lower):
-        return """### 🏢 What is the Utah Data Center?
+The reaction takes place inside **chloroplasts** containing the light-absorbing pigment **chlorophyll**, providing the fundamental source of oxygen and organic nutrients for life on Earth."""
 
-The **Utah Data Center** (codenamed **Bumblehive**) is a massive data storage and computing facility operated by the United States **National Security Agency (NSA)**.
-
----
-
-### Key Facts:
-- **Location:** Situated near Bluffdale, Utah, at Camp Williams.
-- **Completed:** Constructed between 2011 and 2014.
-- **Purpose:** Designed to store, process, and analyze massive volumes of satellite communications, intelligence data, and internet traffic.
-- **Scale:** Covers over 1 million square feet, with massive electrical and water-cooling infrastructure required to power its supercomputers."""
-
-    # 7. Hadoop
+    # 8. Hadoop
     if 'hadoop' in q_lower:
         if 'mode' in q_lower or 'modes' in q_lower:
             return """### 🐘 What are the Modes of Hadoop?
 
-Apache Hadoop operates in **three execution modes**:
+Apache Hadoop operates in **three distinct execution modes**:
 
-1. **Standalone (Local) Mode:** Runs on a single JVM on a single computer without daemons; uses the local file system (used for debugging).
-2. **Pseudo-Distributed Mode:** Runs on a single machine simulating a cluster; each daemon (NameNode, DataNode, ResourceManager) runs in a separate JVM using HDFS.
-3. **Fully-Distributed Mode:** Enterprise production cluster across multiple physical/cloud servers managing distributed storage and parallel processing."""
+1. **Standalone (Local) Mode:**
+   - Default mode running on a single JVM without daemons; uses the local OS file system rather than HDFS. Used primarily for initial testing and debugging MapReduce logic.
+2. **Pseudo-Distributed Mode:**
+   - Runs on a single physical machine simulating an entire cluster. Each Hadoop daemon (NameNode, DataNode, ResourceManager, NodeManager) executes in a separate Java process using HDFS.
+3. **Fully-Distributed Mode:**
+   - Enterprise production environment distributed across multiple physical or cloud server nodes, enabling distributed storage (HDFS) and parallel processing (MapReduce/YARN)."""
         return """### 🐘 What is Apache Hadoop?
 
-**Apache Hadoop** is an open-source framework designed to store and process enormous datasets (Big Data) across clusters of commodity computers.
+**Apache Hadoop** is an open-source distributed computing framework designed to store and process Big Data across clusters of commodity hardware.
 
 ---
 
-### Core Modules of Hadoop:
-1. **HDFS (Hadoop Distributed File System):** Splits massive files into distributed blocks replicated across nodes for high fault tolerance.
-2. **YARN (Yet Another Resource Negotiator):** Coordinates CPU, memory, and task scheduling across the cluster.
-3. **MapReduce:** A parallel programming model that processes vast datasets in two phases: Map (filter/sort) and Reduce (aggregate)."""
-
-    # 8. Photosynthesis
-    if 'photosynthesis' in q_lower:
-        return """### 🌿 What is Photosynthesis?
-
-**Photosynthesis** is the biological process by which green plants, algae, and some bacteria convert light energy into chemical energy (glucose) using water and carbon dioxide, releasing oxygen as a byproduct.
-
----
-
-### Chemical Equation:
-$$\\text{Carbon Dioxide} + \\text{Water} + \\text{Light} \\longrightarrow \\text{Glucose} + \\text{Oxygen}$$
-
-Leaves capture sunlight using the green pigment **chlorophyll**, providing the energy foundation for nearly all life on Earth."""
+### Core Components:
+1. **HDFS (Hadoop Distributed File System):** Splits massive files into distributed blocks (default 128 MB) replicated across DataNodes for high fault tolerance.
+2. **YARN (Yet Another Resource Negotiator):** Coordinates cluster resources and schedules compute jobs.
+3. **MapReduce:** A parallel programming paradigm dividing jobs into a **Map** phase (filtering/sorting) and a **Reduce** phase (aggregation)."""
 
     # 9. Python
     if 'python' in q_lower:
         return """### 🐍 What is Python?
 
-**Python** is an interpreted, high-level, general-purpose programming language created by Guido van Rossum and released in 1991.
+**Python** is a high-level, interpreted, dynamically-typed programming language created by Guido van Rossum and released in 1991.
 
 ---
 
-### Key Features:
-- **Simple, Readable Syntax:** Easy to learn, resembling plain English.
-- **Versatile:** Powers Web Development (FastAPI, Django), Data Science, Machine Learning (TensorFlow, PyTorch), and Automation.
-- **Batteries-Included:** Rich standard library and vast ecosystem of open-source packages."""
+### Key Attributes:
+- **Clean Syntax:** Prioritizes code readability using significant indentation, resembling pseudo-code.
+- **Multi-Paradigm:** Supports Procedural, Object-Oriented (OOP), and Functional programming styles.
+- **Ecosystem:** Powers Machine Learning (PyTorch, TensorFlow), Data Science (Pandas, NumPy), and Web Backend (FastAPI, Django)."""
 
     # 10. Machine Learning
     if 'machine learning' in q_lower or ('ml' in q_lower and len(q_lower.split()) <= 4):
         return """### 🤖 What is Machine Learning?
 
-**Machine Learning (ML)** is a subset of Artificial Intelligence (AI) that enables computer systems to learn and improve from data automatically without being explicitly programmed for every scenario.
+**Machine Learning (ML)** is a branch of Artificial Intelligence (AI) focused on building algorithms that learn patterns from historical data to make automated predictions without being explicitly hardcoded.
 
 ---
 
-### Three Main Types of Machine Learning:
-1. **Supervised Learning:** Training models on labeled data (e.g., predicting house prices, spam classification).
-2. **Unsupervised Learning:** Finding hidden patterns in unlabeled data (e.g., customer segmentation, clustering).
-3. **Reinforcement Learning:** Training agents via rewards and penalties through trial and error (e.g., game-playing AI, robotics)."""
+### Three Core Paradigms:
+1. **Supervised Learning:** Trained on labeled input-output pairs (e.g., Regression, Classification).
+2. **Unsupervised Learning:** Discovers hidden structures in unlabeled datasets (e.g., K-Means Clustering, PCA).
+3. **Reinforcement Learning:** Agents learn optimal action policies through environmental feedback (rewards and penalties)."""
 
-    # 11. Clear Notification when AI is unavailable for an uncurated topic (NO generic fake answers!)
-    return f"""⚠️ **AI Response Unavailable**
+    # 11. Moon landing
+    if 'moon' in q_lower and ('first' in q_lower or 'walk' in q_lower):
+        return """**Neil Armstrong** was the first human to walk on the Moon. 
 
-EduGenie was unable to generate a live AI response for: *"**{question}**"*
+He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 11** mission alongside Lunar Module Pilot Buzz Aldrin, famously stating: *"That's one small step for man, one giant leap for mankind."*"""
 
-**Reason:** The Google Gemini AI service could not be reached, or the configured API key is invalid/unauthenticated.
-
-**How to resolve:**
-1. Ensure your Gemini API key is valid and configured in the application settings or Render environment variables (`GEMINI_API_KEY`).
-2. You can generate a free Gemini API key anytime at [Google AI Studio](https://aistudio.google.com/app/apikey)."""
+    # 12. Clean Student-Facing Notice (Zero Technical/API Details)
+    return "EduGenie is temporarily unable to generate an AI answer. Please try again in a moment."
 
 def get_answer(question: str, api_key: str) -> str:
     """Main answer generator enforcing: Understand Question -> Identify Intent -> Generate -> Check Relevance -> Display."""
@@ -305,7 +431,7 @@ def get_answer(question: str, api_key: str) -> str:
         
     # Check for ambiguous / incomplete queries
     if len(q_stripped.split()) == 1 and q_stripped.lower() in {'why', 'how', 'what', 'it', 'more', 'tell', 'yes', 'no'}:
-        return f"Could you please specify your question in a bit more detail? For example: *'What is photosynthesis?'* or *'What is an operating system and its main functions?'*"
+        return f"Could you please specify your question in a bit more detail? For example: *'What is the difference between a process and a thread?'* or *'What is photosynthesis?'*"
 
     # Math optimization (instant exact computation)
     math_res = evaluate_simple_math(q_stripped)
@@ -314,7 +440,7 @@ def get_answer(question: str, api_key: str) -> str:
 
     clean_key = (api_key or "").strip().strip('"').strip("'")
     
-    # 1. Primary Engine: Google Gemini API
+    # 1. Primary Engine: Google Gemini API (SDK + REST fallback)
     if clean_key:
         answer = call_gemini(q_stripped, clean_key)
         
@@ -322,16 +448,17 @@ def get_answer(question: str, api_key: str) -> str:
         if answer and is_answer_relevant(q_stripped, answer):
             return answer
             
-        # 3. If the answer was irrelevant or failed check, REGENERATE with an intensified grounding prompt
+        # 3. If the answer was irrelevant, REGENERATE with an intensified grounding prompt
         if answer:
             refocus_prompt = (
-                f"CRITICAL RE-GENERATION: The student asked: \"{q_stripped}\". "
-                f"Directly answer what the student asked first with factual definitions and explanations. "
+                f"CRITICAL RE-GENERATION: The CSE student asked: \"{q_stripped}\". "
+                f"Provide a direct, factual, structured answer tailored for CSE students. "
+                f"Include definition, explanation, key differences/points, examples, and short summary. "
                 f"Do NOT provide generic filler, and do NOT mention any unrelated topics."
             )
             retry_answer = call_gemini(refocus_prompt, clean_key)
             if retry_answer and is_answer_relevant(q_stripped, retry_answer):
                 return retry_answer
 
-    # 4. Factual Fallback or Honest Unavailability Notice (Zero generic template fluff)
+    # 4. Syllabus Fallback or Clean Student Notification (No generic filler, no technical errors)
     return fallback_answer(q_stripped)
