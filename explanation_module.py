@@ -5,34 +5,25 @@ import json
 import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
-STOPWORDS = {'what', 'is', 'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'explain', 'tell', 'me', 'about', 'define', 'describe', 'how', 'does', 'why', 'are', 'modes', 'types', 'features', 'advantages', 'disadvantages', 'components', 'layers'}
 
-def smart_fetch_concept(query: str):
-    words = [w for w in re.findall(r'\b[a-zA-Z0-9_-]+\b', query.lower()) if w not in STOPWORDS and len(w) > 2]
-    candidates = [query]
-    if words:
-        candidates.append(' '.join(words))
-        for w in words:
-            if w not in candidates:
-                candidates.append(w)
-                
-    for c in candidates:
-        url = 'https://en.wikipedia.org/w/api.php?action=opensearch&search=' + urllib.parse.quote(c) + '&limit=3&namespace=0&format=json'
-        req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational app)'})
-        try:
-            with urllib.request.urlopen(req, timeout=4) as res:
-                data = json.loads(res.read().decode('utf-8'))
-                if data[1]:
-                    title = data[1][0]
-                    s_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(title)
-                    s_req = urllib.request.Request(s_url, headers={'User-Agent': 'EduGenie/1.0'})
-                    with urllib.request.urlopen(s_req, timeout=4) as sres:
-                        sdata = json.loads(sres.read().decode('utf-8'))
-                        if sdata.get('extract') and sdata.get('type') != 'disambiguation':
-                            return sdata.get('title'), sdata.get('extract')
-        except Exception:
-            continue
-    return query, None
+def fetch_world_knowledge(query: str):
+    url = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + urllib.parse.quote(query) + '&utf8=&format=json'
+    req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational assistant)'})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as res:
+            data = json.loads(res.read().decode('utf-8'))
+            results = data.get('query', {}).get('search', [])
+            if results:
+                best_title = results[0]['title']
+                sum_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(best_title)
+                sreq = urllib.request.Request(sum_url, headers={'User-Agent': 'EduGenie/1.0'})
+                with urllib.request.urlopen(sreq, timeout=5) as sres:
+                    sdata = json.loads(sres.read().decode('utf-8'))
+                    if sdata.get('extract') and sdata.get('type') != 'disambiguation':
+                        return sdata.get('title'), sdata.get('extract')
+    except Exception as e:
+        print(f"Concept fetch error: {e}")
+    return None, None
 
 def explain_concept(topic: str, api_key: str) -> str:
     clean_key = (api_key or "").strip().strip('"').strip("'")
@@ -45,7 +36,7 @@ Use clear markdown headers (###), horizontal lines (---), bullet points with bol
 End with a friendly question asking if they would like to try a quiz or see another example."""
 
     # 1. Try Google Gemini API
-    if clean_key:
+    if clean_key and clean_key.startswith("AIzaSy"):
         try:
             genai.configure(api_key=clean_key)
             for model_name in MODELS:
@@ -54,10 +45,11 @@ End with a friendly question asking if they would like to try a quiz or see anot
                     response = model.generate_content(prompt)
                     if response and response.text:
                         return response.text
-                except Exception:
+                except Exception as err:
+                    print(f"Gemini {model_name} error: {err}")
                     continue
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"Genai config error: {err}")
 
     t_lower = topic.lower()
 
@@ -68,8 +60,8 @@ End with a friendly question asking if they would like to try a quiz or see anot
 
 ### What are Hadoop Execution Modes?
 
-Imagine you are cooking for an event. You can:
-1. Cook alone in your kitchen (Standalone Mode)
+Imagine you are cooking for a huge party. You can:
+1. Cook alone in your personal kitchen (Standalone Mode)
 2. Pretend to run a restaurant by setting up 3 cooking stations in your kitchen (Pseudo-Distributed Mode)
 3. Run an actual massive banquet across 10 kitchens with 10 chefs (Fully-Distributed Mode)
 
@@ -148,11 +140,11 @@ The direct shortcut distance is exactly **5 meters**!
 
 Would you like to try calculating another triangle together, or test yourself with a quick quiz?"""
 
-    # Dynamic concept search
-    title, extract = smart_fetch_concept(topic)
+    # Dynamic concept search for ANY topic
+    title, extract = fetch_world_knowledge(topic)
     if extract:
-        sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 10]
-        points = "\n".join([f"{i+1}. **Key Concept:** {s}." for i, s in enumerate(sentences[:4])])
+        sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 8]
+        points = "\n".join([f"- **Key Principle {i+1}:** {s}." for i, s in enumerate(sentences[:4])])
         return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{title}** to you today!
 
 ---
@@ -177,19 +169,18 @@ Think of **{title}** like an engineered system: every part has a specific respon
 
 Would you like to see another practical example of **{title}**, or take a 10-question quiz to test yourself?"""
 
-    clean_subj = " ".join([w for w in re.findall(r'\b[a-zA-Z0-9_-]+\b', topic) if w.lower() not in STOPWORDS]) or topic
-    return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{clean_subj}** to you today!
+    return f"""Hello! I am **EduGenie**, your friendly AI tutor!
 
 ---
 
-### What is {clean_subj}?
+### Regarding: "{topic}"
 
-**{clean_subj}** is an important concept in your studies! Just like building with Lego blocks, understanding this topic becomes easy when we break it down into simple, manageable pieces:
+This concept touches upon important academic and real-world principles.
 
-1. **Foundational Definition:** The core rules and theories that establish what {clean_subj} does.
-2. **Everyday Analogy:** Connects abstract theory to familiar real-world experiences.
-3. **Practical Application:** Solves concrete problems in modern technology, science, and industry.
+To receive live, unlimited AI explanations for every single concept from the entire world:
+1. Ensure your Gemini API Key starting with `AIzaSy...` is set in Render Environment Variables, OR
+2. Click the **"🔑 AI Key"** button at the top right of this page and paste your `AIzaSy...` key once!
 
 ***
 
-Would you like to test your understanding with an interactive quiz on **{clean_subj}**?"""
+Would you like to try another concept or generate a study quiz?"""
