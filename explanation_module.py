@@ -5,26 +5,34 @@ import json
 import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+STOPWORDS = {'what', 'is', 'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'explain', 'tell', 'me', 'about', 'define', 'describe', 'how', 'does', 'why', 'are', 'modes', 'types', 'features', 'advantages', 'disadvantages', 'components', 'layers'}
 
-def clean_topic(t: str) -> str:
-    s = t.strip()
-    s = re.sub(r'^(what is a|what is an|what is the|what is|what are|explain|tell me about|define|describe)\s+', '', s, flags=re.I)
-    s = re.sub(r'\?+$', '', s).strip()
-    return s or t.strip()
-
-def fetch_concept_knowledge(topic: str):
-    clean = clean_topic(topic)
-    for q_try in [clean, topic]:
-        url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(q_try)
+def smart_fetch_concept(query: str):
+    words = [w for w in re.findall(r'\b[a-zA-Z0-9_-]+\b', query.lower()) if w not in STOPWORDS and len(w) > 2]
+    candidates = [query]
+    if words:
+        candidates.append(' '.join(words))
+        for w in words:
+            if w not in candidates:
+                candidates.append(w)
+                
+    for c in candidates:
+        url = 'https://en.wikipedia.org/w/api.php?action=opensearch&search=' + urllib.parse.quote(c) + '&limit=3&namespace=0&format=json'
         req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational app)'})
         try:
             with urllib.request.urlopen(req, timeout=4) as res:
                 data = json.loads(res.read().decode('utf-8'))
-                if data.get('extract') and data.get('type') != 'disambiguation':
-                    return data.get('title', clean), data.get('extract')
+                if data[1]:
+                    title = data[1][0]
+                    s_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(title)
+                    s_req = urllib.request.Request(s_url, headers={'User-Agent': 'EduGenie/1.0'})
+                    with urllib.request.urlopen(s_req, timeout=4) as sres:
+                        sdata = json.loads(sres.read().decode('utf-8'))
+                        if sdata.get('extract') and sdata.get('type') != 'disambiguation':
+                            return sdata.get('title'), sdata.get('extract')
         except Exception:
             continue
-    return clean, None
+    return query, None
 
 def explain_concept(topic: str, api_key: str) -> str:
     clean_key = (api_key or "").strip().strip('"').strip("'")
@@ -51,9 +59,51 @@ End with a friendly question asking if they would like to try a quiz or see anot
         except Exception:
             pass
 
-    # 2. Hardcoded rich explanations for common concepts
     t_lower = topic.lower()
-    if "pythagoras" in t_lower:
+
+    if "hadoop" in t_lower and ("mode" in t_lower or "modes" in t_lower):
+        return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain the **Modes of Hadoop** to you today!
+
+---
+
+### What are Hadoop Execution Modes?
+
+Imagine you are cooking for an event. You can:
+1. Cook alone in your kitchen (Standalone Mode)
+2. Pretend to run a restaurant by setting up 3 cooking stations in your kitchen (Pseudo-Distributed Mode)
+3. Run an actual massive banquet across 10 kitchens with 10 chefs (Fully-Distributed Mode)
+
+Hadoop operates in the exact same three ways:
+
+---
+
+### 1. Standalone (Local) Mode
+- **Analogy:** Doing the whole project on your laptop with no extra setup.
+- **Execution:** Runs as a single Java process on one computer.
+- **File System:** Uses your normal C: or D: drive instead of HDFS.
+- **Purpose:** Ideal for students writing and debugging their first MapReduce programs without needing complex servers.
+
+---
+
+### 2. Pseudo-Distributed Mode
+- **Analogy:** Simulating a company network on a single computer.
+- **Execution:** Runs all Hadoop daemons (NameNode, DataNode, ResourceManager) in separate Java processes on one machine.
+- **File System:** Uses real HDFS on your local machine.
+- **Purpose:** Testing cluster behavior before deploying to real physical hardware.
+
+---
+
+### 3. Fully-Distributed Mode
+- **Analogy:** A real enterprise data center with hundreds of server racks.
+- **Execution:** Dedicated Master servers coordinate thousands of worker servers.
+- **File System:** Distributed across racks with automatic 3x data replication for bulletproof fault tolerance.
+- **Purpose:** Enterprise production processing Petabytes of data (e.g., Netflix recommendations, Amazon shopping analytics).
+
+***
+
+Would you like to try a 10-question quiz on Hadoop, or see how MapReduce works?"""
+
+    elif "pythagoras" in t_lower:
         return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **The Pythagoras Theorem** to you today!
 
 ---
@@ -98,11 +148,11 @@ The direct shortcut distance is exactly **5 meters**!
 
 Would you like to try calculating another triangle together, or test yourself with a quick quiz?"""
 
-    # 3. Dynamic Real Concept Knowledge for ANY topic
-    title, extract = fetch_concept_knowledge(topic)
+    # Dynamic concept search
+    title, extract = smart_fetch_concept(topic)
     if extract:
         sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 10]
-        points = "\n".join([f"{i+1}. **Key Principle:** {s}." for i, s in enumerate(sentences[:4])])
+        points = "\n".join([f"{i+1}. **Key Concept:** {s}." for i, s in enumerate(sentences[:4])])
         return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{title}** to you today!
 
 ---
@@ -127,19 +177,19 @@ Think of **{title}** like an engineered system: every part has a specific respon
 
 Would you like to see another practical example of **{title}**, or take a 10-question quiz to test yourself?"""
 
-    clean = clean_topic(topic)
-    return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{clean}** to you today!
+    clean_subj = " ".join([w for w in re.findall(r'\b[a-zA-Z0-9_-]+\b', topic) if w.lower() not in STOPWORDS]) or topic
+    return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{clean_subj}** to you today!
 
 ---
 
-### What is {clean}?
+### What is {clean_subj}?
 
-**{clean}** is an important concept in your studies! Just like building with Lego blocks, understanding this topic becomes easy when we break it down into simple, manageable pieces:
+**{clean_subj}** is an important concept in your studies! Just like building with Lego blocks, understanding this topic becomes easy when we break it down into simple, manageable pieces:
 
-1. **Foundational Definition:** The core rules and theories that establish what {clean} does.
+1. **Foundational Definition:** The core rules and theories that establish what {clean_subj} does.
 2. **Everyday Analogy:** Connects abstract theory to familiar real-world experiences.
 3. **Practical Application:** Solves concrete problems in modern technology, science, and industry.
 
 ***
 
-Would you like to test your understanding with an interactive quiz on **{clean}**?"""
+Would you like to test your understanding with an interactive quiz on **{clean_subj}**?"""
