@@ -3,7 +3,7 @@
 def summarize_text(passage: str, api_key: str) -> str:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        model = genai.GenerativeModel("gemini-pro")
         prompt = f"""Summarize the following educational passage into clear bullet points.
 Keep all key information but remove unnecessary details.
 
