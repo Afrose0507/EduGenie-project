@@ -1,10 +1,9 @@
-import google.generativeai as genai
-
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+import gemini_client
+import json
 
 def summarize_text(passage: str, api_key: str) -> str:
-    prompt = f"""You are EduGenie, an expert educational synthesizer.
-Analyze and summarize the following passage thoroughly and professionally.
+    prompt = f"""You are EduGenie, a universal educational synthesizer.
+Analyze and summarize the following educational passage thoroughly and professionally.
 
 You MUST structure your output with these exact markdown headers:
 
@@ -27,18 +26,9 @@ Passage:
 {passage}"""
 
     if api_key:
-        try:
-            genai.configure(api_key=api_key)
-            for model_name in MODELS:
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        return response.text
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        res = gemini_client.generate_text(prompt, api_key)
+        if res:
+            return res
 
     sentences = [s.strip() for s in passage.replace("\n", " ").split(".") if len(s.strip()) > 8]
     bullets = "\n".join([f"- **Key Takeaway {i+1}:** {s}." for i, s in enumerate(sentences[:6])])

@@ -1,46 +1,36 @@
-import google.generativeai as genai
-
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+import gemini_client
+import json
 
 def get_learning_recommendations(topic: str, api_key: str) -> str:
-    prompt = f"""You are EduGenie, an expert curriculum designer and academic advisor.
+    prompt = f"""You are EduGenie, an expert curriculum designer and academic advisor for students of all educational backgrounds.
 Design an extensive, high-impact, step-by-step learning roadmap for mastering "{topic}".
 
 You MUST format the response with the following clear markdown headers:
 
 ### 📖 Curriculum Introduction & Scope
-(A comprehensive overview of what mastering this subject entails, its industry relevance, career pathways, and expected learning outcomes.)
+(A comprehensive overview of what mastering this subject entails, its real-world relevance, career pathways, and expected learning outcomes.)
 
 ### ⚡ Quick Roadmap Overview (Short Answer)
 (A crisp 2-3 sentence summary of the learning trajectory from novice to professional.)
 
 ### 🔑 Key Prerequisites & Foundational Skills
-(Bullet points listing essential prior knowledge, software tools, development environments, or core concepts required.)
+(Bullet points listing essential prior knowledge, tools, or core concepts required.)
 
 ### 🔬 Deep Dive: Step-by-Step Structured Curriculum
 #### 🟢 Phase 1: Beginner Fundamentals (Weeks 1 - 2)
 (Topics, theoretical principles, hands-on tutorials, milestone test.)
 #### 🟡 Phase 2: Intermediate Mastery & Problem Solving (Weeks 3 - 4)
-(Core workflows, libraries, mini-projects, debugging practices, milestone challenge.)
+(Core workflows, mini-projects, debugging/application practices, milestone challenge.)
 #### 🔴 Phase 3: Advanced Specialization & Capstone Project (Weeks 5 - 6)
-(Architecture, performance tuning, real-world deployment, portfolio capstone project.)
+(Advanced principles, real-world execution, portfolio capstone project.)
 
 ### 💡 Academic & Professional Next Steps
-(Certification advice, interview questions, and recommended open-source contributions.)"""
+(Certification advice, exam questions, and recommended practical exercises.)"""
 
     if api_key:
-        try:
-            genai.configure(api_key=api_key)
-            for model_name in MODELS:
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        return response.text
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        res = gemini_client.generate_text(prompt, api_key)
+        if res:
+            return res
 
     return f"""### 📖 Curriculum Introduction & Scope
 Mastering **{topic}** requires a methodical approach that balances foundational theory with rigorous hands-on practice. In modern academia and industry, proficiency in this subject opens avenues across high-impact research, engineering, and innovative technological development.

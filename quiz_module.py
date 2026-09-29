@@ -1,8 +1,6 @@
-import google.generativeai as genai
+import gemini_client
 import json
 import re
-
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 def clean_json_block(text: str) -> str:
     text = re.sub(r"^```json\s*", "", text, flags=re.MULTILINE)
@@ -19,7 +17,7 @@ def generate_quiz(passage: str, api_key: str):
     clean_key = (api_key or "").strip().strip('"').strip("'")
     clean_subj = clean_topic(passage)
     
-    prompt = f"""You are EduGenie, an expert educational exam designer.
+    prompt = f"""You are EduGenie, an expert educational exam designer for all academic subjects.
 Generate exactly 10 high-quality multiple-choice questions testing knowledge strictly on the subject: "{clean_subj}".
 
 CRITICAL DIRECTIVES:
@@ -38,21 +36,15 @@ Return ONLY a valid JSON array matching this exact schema:
 ]"""
 
     if clean_key:
-        try:
-            genai.configure(api_key=clean_key)
-            for model_name in MODELS:
-                try:
-                    model = genai.GenerativeModel(model_name=model_name)
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        cleaned = clean_json_block(response.text)
-                        data = json.loads(cleaned)
-                        if isinstance(data, list) and len(data) >= 5:
-                            return data
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"Quiz generation error: {e}")
+        res = gemini_client.generate_text(prompt, clean_key)
+        if res:
+            try:
+                cleaned = clean_json_block(res)
+                data = json.loads(cleaned)
+                if isinstance(data, list) and len(data) >= 5:
+                    return data
+            except Exception as e:
+                print(f"[Quiz Parse Error]: {e}")
 
     # Pure educational fallback strictly aligned to the topic
     return [
