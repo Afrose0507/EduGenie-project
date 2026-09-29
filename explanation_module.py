@@ -45,7 +45,18 @@ def is_explanation_relevant(topic: str, explanation: str) -> bool:
     return True
 
 def call_gemini_explain(topic: str, api_key: str):
-    prompt = f"Please explain the concept of '{topic}' in a clear, structured way, adapting to the student's field and requested depth."
+    q_lower = topic.lower().strip()
+    is_detailed = any(w in q_lower for w in ["in detail", "detailed", "everything", "thoroughly", "deep dive"]) or len(topic.split()) > 15
+    if is_detailed:
+        prompt = f"Please explain the concept of '{topic}' in a thorough, well-structured way with definitions, mechanisms, and real-world applications."
+    else:
+        prompt = (
+            f"Please explain the concept of '{topic}' concisely and clearly for a student:\n"
+            f"1. **Core Definition**: Clear, direct explanation (1–2 sentences).\n"
+            f"2. **Key Points**: 2 to 4 important bullet points.\n"
+            f"3. **Simple Analogy / Example**: One relatable real-world comparison.\n"
+            f"Keep it concise, clear, and direct without unnecessary filler."
+        )
     return gemini_client.generate_text(prompt, api_key, system_instruction=SYSTEM_INSTRUCTION)
 
 def fallback_explanation(topic: str) -> str:
