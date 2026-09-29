@@ -17,32 +17,41 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def home():
     return FileResponse("templates/index.html")
 
+@app.get("/api/status")
+async def api_status():
+    has_key = bool(API_KEY and len(API_KEY) > 10)
+    return {
+        "status": "online",
+        "has_server_api_key": has_key,
+        "key_preview": f"{API_KEY[:6]}...{API_KEY[-4:]}" if has_key else "Not Configured on Render"
+    }
+
 @app.post("/qa")
 async def qa(question: str = Form(...), api_key: str = Form("")):
-    key = api_key or API_KEY
+    key = api_key.strip() or API_KEY
     result = get_answer(question, key)
     return JSONResponse({"result": result})
 
 @app.post("/explain")
 async def explain(topic: str = Form(...), api_key: str = Form("")):
-    key = api_key or API_KEY
+    key = api_key.strip() or API_KEY
     result = explain_concept(topic, key)
     return JSONResponse({"result": result})
 
 @app.post("/summarize")
 async def summarize(passage: str = Form(...), api_key: str = Form("")):
-    key = api_key or API_KEY
+    key = api_key.strip() or API_KEY
     result = summarize_text(passage, key)
     return JSONResponse({"result": result})
 
 @app.post("/quiz")
 async def quiz(passage: str = Form(...), api_key: str = Form("")):
-    key = api_key or API_KEY
+    key = api_key.strip() or API_KEY
     result = generate_quiz(passage, key)
     return JSONResponse({"result": result})
 
 @app.post("/learn/recommendations")
 async def learn(topic: str = Form(...), api_key: str = Form("")):
-    key = api_key or API_KEY
+    key = api_key.strip() or API_KEY
     result = get_learning_recommendations(topic, key)
     return JSONResponse({"result": result})

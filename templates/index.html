@@ -9,12 +9,24 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-<nav class="navbar">
-  <div class="nav-brand">🧞 EduGenie</div>
-  <div class="nav-subtitle">Google Gemini Powered Learning Assistant</div>
+<nav class="navbar" style="display:flex; justify-content:space-between; align-items:center;">
+  <div>
+    <div class="nav-brand">🧞 EduGenie</div>
+    <div class="nav-subtitle">Google Gemini Powered Learning Assistant</div>
+  </div>
+  <button id="keyToggleBtn" onclick="toggleKeyBox()" style="background:rgba(99,102,241,0.2); border:1px solid #6366f1; color:#c7d2fe; padding:6px 14px; border-radius:20px; font-size:12px; cursor:pointer; font-weight:600;">🔑 AI Key</button>
 </nav>
 
 <div class="container">
+  <!-- Optional API Key Setting -->
+  <div id="keyBox" style="display:none; margin-bottom:20px; background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.3); border-radius:12px; padding:16px;">
+    <div style="display:flex; gap:10px; align-items:center;">
+      <input type="password" id="customApiKey" placeholder="Paste Gemini API Key (starts with AIzaSy...)" style="flex:1; padding:10px 14px; border-radius:8px; border:1px solid rgba(99,102,241,0.4); background:#0f172a; color:white; font-size:13px;">
+      <button onclick="saveApiKey()" style="padding:10px 18px; background:#6366f1; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Save</button>
+    </div>
+    <div id="keyStatusText" style="color:#94a3b8; font-size:12px; margin-top:8px;">💡 Paste your Gemini key once. It saves on your device so EduGenie can answer <strong>ANY random question in the entire world</strong> using live Google AI!</div>
+  </div>
+
   <!-- TABS -->
   <div class="tabs">
     <button class="tab active" onclick="showTab('qa',this)">🤖 Ask a Question</button>
@@ -28,8 +40,8 @@
   <div id="qa" class="tab-content active">
     <div class="card">
       <h2>🤖 Ask EduGenie a Question</h2>
-      <p class="subtitle">Get friendly, smart, conversational answers on any academic topic</p>
-      <textarea id="qaInput" placeholder="e.g. What is Python? Which is the largest ocean? What is DBMS?"></textarea>
+      <p class="subtitle">Ask any question from the world and get conversational, smart answers</p>
+      <textarea id="qaInput" placeholder="Ask anything in the world! e.g. What are the modes of Hadoop? What is Quantum Computing?"></textarea>
       <button class="btn" onclick="submit('qa','question',qaInput,'qaResult')">Ask EduGenie</button>
       <div id="qaResult" class="result hidden"></div>
     </div>
@@ -40,7 +52,7 @@
     <div class="card">
       <h2>💡 Explain a Concept</h2>
       <p class="subtitle">Simplified explanations with real-world analogies</p>
-      <textarea id="explainInput" placeholder="e.g. Pythagoras Theorem, Photosynthesis, Gravity..."></textarea>
+      <textarea id="explainInput" placeholder="e.g. Modes of Hadoop, Pythagoras Theorem, Photosynthesis..."></textarea>
       <button class="btn" onclick="submit('explain','topic',explainInput,'explainResult')">Explain Concept</button>
       <div id="explainResult" class="result hidden"></div>
     </div>
@@ -51,7 +63,7 @@
     <div class="card">
       <h2>❓ Generate Quiz</h2>
       <p class="subtitle">Test your knowledge — 10 MCQs with instant feedback & answers</p>
-      <textarea id="quizInput" placeholder="e.g. Python Programming, Database Management, Solar System..."></textarea>
+      <textarea id="quizInput" placeholder="e.g. Hadoop, Database Management, Python, Solar System..."></textarea>
       <button class="btn" onclick="submitQuiz()">Generate 10-Question Quiz</button>
       <div id="quizResult" class="quiz-container hidden"></div>
     </div>
@@ -73,7 +85,7 @@
     <div class="card">
       <h2>🗺️ Learning Path Generator</h2>
       <p class="subtitle">Personalized step-by-step roadmap from beginner to advanced</p>
-      <textarea id="learnInput" placeholder="e.g. Python for Beginners, Machine Learning, Web Development..."></textarea>
+      <textarea id="learnInput" placeholder="e.g. Big Data with Hadoop, Python for AI, Full-Stack Web Dev..."></textarea>
       <button class="btn" onclick="submit('learn/recommendations','topic',learnInput,'learnResult')">Generate Roadmap</button>
       <div id="learnResult" class="result hidden"></div>
     </div>
@@ -85,6 +97,47 @@
 </footer>
 
 <script>
+function getActiveApiKey() {
+  return localStorage.getItem('edugenie_gemini_key') || '';
+}
+
+function toggleKeyBox() {
+  const box = document.getElementById('keyBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') {
+    document.getElementById('customApiKey').value = getActiveApiKey();
+  }
+}
+
+function saveApiKey() {
+  const val = document.getElementById('customApiKey').value.trim();
+  if (val) {
+    localStorage.setItem('edugenie_gemini_key', val);
+    alert('✅ Gemini AI Key saved! EduGenie will now answer ANY random question from the entire world with live Google AI!');
+    document.getElementById('keyBox').style.display = 'none';
+    updateKeyBtn();
+  } else {
+    localStorage.removeItem('edugenie_gemini_key');
+    alert('API Key cleared.');
+    updateKeyBtn();
+  }
+}
+
+function updateKeyBtn() {
+  const btn = document.getElementById('keyToggleBtn');
+  if (getActiveApiKey()) {
+    btn.innerHTML = '✅ AI Connected';
+    btn.style.borderColor = '#10b981';
+    btn.style.color = '#6ee7b7';
+  } else {
+    btn.innerHTML = '🔑 AI Key';
+    btn.style.borderColor = '#6366f1';
+    btn.style.color = '#c7d2fe';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', updateKeyBtn);
+
 function showTab(name,el){
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -114,7 +167,7 @@ async function submit(endpoint,fieldName,inputEl,resultId){
   resultEl.innerHTML='<div class="loading"><div class="spinner"></div> EduGenie is thinking...</div>';
   const formData=new FormData();
   formData.append(fieldName,input);
-  formData.append('api_key','');
+  formData.append('api_key', getActiveApiKey());
   try{
     const res=await fetch('/'+endpoint,{method:'POST',body:formData});
     const data=await res.json();
@@ -132,7 +185,7 @@ async function submitQuiz(){
   resultEl.innerHTML='<div class="loading"><div class="spinner"></div> Generating 10 quiz questions...</div>';
   const formData=new FormData();
   formData.append('passage',input);
-  formData.append('api_key','');
+  formData.append('api_key', getActiveApiKey());
   try{
     const res=await fetch('/quiz',{method:'POST',body:formData});
     const data=await res.json();
