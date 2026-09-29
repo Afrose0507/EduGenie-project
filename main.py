@@ -26,6 +26,80 @@ async def api_status():
         "key_preview": f"{API_KEY[:6]}...{API_KEY[-4:]}" if has_key else "Not Configured on Render"
     }
 
+@app.get("/api/diagnose")
+async def api_diagnose():
+    import urllib.request, urllib.error, json
+    import google.generativeai as genai
+    
+    diag = {
+        "key_length": len(API_KEY),
+        "key_prefix": API_KEY[:6] if API_KEY else "",
+        "key_suffix": API_KEY[-4:] if API_KEY else "",
+        "has_whitespace": bool(API_KEY and (" " in API_KEY or "\n" in API_KEY or "\r" in API_KEY or "\t" in API_KEY)),
+    }
+    
+    # 1. Test SDK
+    try:
+        genai.configure(api_key=API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        res = model.generate_content("Test ping")
+        diag["sdk_result"] = "SUCCESS: " + (res.text[:100] if res and res.text else "empty")
+    except Exception as e:
+        diag["sdk_result"] = f"ERROR ({type(e).__name__}): {str(e)}"
+        
+    # 2. Test REST with x-goog-api-key header
+    try:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        payload = json.dumps({"contents": [{"parts": [{"text": "Test ping"}]}]}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "x-goog-api-key": API_KEY})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode("utf-8")
+            diag["rest_header_result"] = f"SUCCESS ({r.status}): {body[:150]}"
+    except urllib.error.HTTPError as e:
+        diag["rest_header_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+    except Exception as e:
+        diag["rest_header_result"] = f"ERROR: {str(e)}"
+
+    # 3. Test REST with ?key= query parameter
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+        payload = json.dumps({"contents": [{"parts": [{"text": "Test ping"}]}]}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode("utf-8")
+            diag["rest_query_result"] = f"SUCCESS ({r.status}): {body[:150]}"
+    except urllib.error.HTTPError as e:
+        diag["rest_query_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+    except Exception as e:
+        diag["rest_query_result"] = f"ERROR: {str(e)}"
+
+    # 4. Test REST with Authorization: Bearer
+    try:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        payload = json.dumps({"contents": [{"parts": [{"text": "Test ping"}]}]}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode("utf-8")
+            diag["rest_bearer_result"] = f"SUCCESS ({r.status}): {body[:150]}"
+    except urllib.error.HTTPError as e:
+        diag["rest_bearer_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+    except Exception as e:
+        diag["rest_bearer_result"] = f"ERROR: {str(e)}"
+
+    # 5. Test Models List endpoint
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode("utf-8")
+            diag["models_list_result"] = f"SUCCESS ({r.status}): {body[:150]}"
+    except urllib.error.HTTPError as e:
+        diag["models_list_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+    except Exception as e:
+        diag["models_list_result"] = f"ERROR: {str(e)}"
+
+    return diag
+
 @app.post("/qa")
 async def qa(question: str = Form(...), api_key: str = Form("")):
     key = api_key.strip() or API_KEY
