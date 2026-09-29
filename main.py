@@ -8,7 +8,7 @@ from quiz_module import generate_quiz
 from summary_module import summarize_text
 from learning_path import get_learning_recommendations
 
-API_KEY = os.environ.get("GEMINI_API_KEY", "")
+API_KEY = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or os.environ.get("API_KEY") or "").strip().strip('"').strip("'")
 
 app = FastAPI(title="EduGenie API")
 app.mount("/static", StaticFiles(directory="static"), name="static")

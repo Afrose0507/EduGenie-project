@@ -1,4 +1,6 @@
 import google.generativeai as genai
+import urllib.request
+import urllib.parse
 import json
 import re
 
@@ -9,7 +11,28 @@ def clean_json_block(text: str) -> str:
     text = re.sub(r"```", "", text)
     return text.strip()
 
+def clean_topic(t: str) -> str:
+    s = t.strip()
+    s = re.sub(r'^(what is a|what is an|what is the|what is|what are|explain|quiz on|quiz about|test on)\s+', '', s, flags=re.I)
+    s = re.sub(r'\?+$', '', s).strip()
+    return s or t.strip()
+
+def fetch_topic_info(topic: str):
+    clean = clean_topic(topic)
+    for q_try in [clean, topic]:
+        url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(q_try)
+        req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0'})
+        try:
+            with urllib.request.urlopen(req, timeout=4) as res:
+                data = json.loads(res.read().decode('utf-8'))
+                if data.get('extract') and data.get('type') != 'disambiguation':
+                    return data.get('title', clean), data.get('extract')
+        except Exception:
+            continue
+    return clean, None
+
 def generate_quiz(passage: str, api_key: str):
+    clean_key = (api_key or "").strip().strip('"').strip("'")
     prompt = f"""Generate exactly 10 comprehensive multiple-choice questions testing knowledge on: "{passage}".
 Each question must feature:
 - A clear, thoughtful question
@@ -25,9 +48,9 @@ Return ONLY valid raw JSON array containing exactly 10 question objects matching
   }}
 ]"""
 
-    if api_key:
+    if clean_key:
         try:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=clean_key)
             for model_name in MODELS:
                 try:
                     model = genai.GenerativeModel(model_name)
@@ -42,216 +65,110 @@ Return ONLY valid raw JSON array containing exactly 10 question objects matching
         except Exception:
             pass
 
-    # Guaranteed 10 high-yield educational questions for any topic demo
-    p_lower = passage.lower()
-    if "python" in p_lower:
-        return [
-            {
-                "question": "Who created the Python programming language?",
-                "options": {"A": "James Gosling", "B": "Guido van Rossum", "C": "Dennis Ritchie", "D": "Bjarne Stroustrup"},
-                "answer": "B"
-            },
-            {
-                "question": "What type of language is Python primarily categorized as?",
-                "options": {"A": "Interpreted & High-Level", "B": "Low-level Assembly", "C": "Strictly Compiled only", "D": "Hardware Description Language"},
-                "answer": "A"
-            },
-            {
-                "question": "Which keyword is used to define a function in Python?",
-                "options": {"A": "func", "B": "function", "C": "def", "D": "define"},
-                "answer": "C"
-            },
-            {
-                "question": "What is the correct file extension for Python script files?",
-                "options": {"A": ".pyt", "B": ".python", "C": ".py", "D": ".pt"},
-                "answer": "C"
-            },
-            {
-                "question": "Which built-in Python data structure is mutable and ordered?",
-                "options": {"A": "Tuple", "B": "List", "C": "Frozenset", "D": "String"},
-                "answer": "B"
-            },
-            {
-                "question": "What does PEP stand for in Python development?",
-                "options": {"A": "Python Execution Program", "B": "Python Enhancement Proposal", "C": "Practical Environment Parser", "D": "Portable Extension Protocol"},
-                "answer": "B"
-            },
-            {
-                "question": "Which library is the industry standard for fast numerical arrays in Python?",
-                "options": {"A": "NumPy", "B": "Requests", "C": "Flask", "D": "Jinja2"},
-                "answer": "A"
-            },
-            {
-                "question": "How are code blocks defined in Python instead of using curly braces?",
-                "options": {"A": "Semicolons", "B": "Indentation (Whitespace)", "C": "Parentheses", "D": "Keywords 'begin' and 'end'"},
-                "answer": "B"
-            },
-            {
-                "question": "What is the output of `bool([])` in Python?",
-                "options": {"A": "True", "B": "False", "C": "None", "D": "TypeError"},
-                "answer": "B"
-            },
-            {
-                "question": "Which Python framework is known for asynchronous, high-speed API development?",
-                "options": {"A": "FastAPI", "B": "WordPress", "C": "Angular", "D": "jQuery"},
-                "answer": "A"
-            }
-        ]
+    # Dynamic 10-Question Generator based on the exact topic
+    title, extract = fetch_topic_info(passage)
+    subject = title or clean_topic(passage)
+    summary_sentence = extract[:140] if extract else f"the foundational principles of {subject}"
 
-    elif "dbms" in p_lower or "database" in p_lower:
-        return [
-            {
-                "question": "What does DBMS stand for?",
-                "options": {"A": "Data Backup Management System", "B": "Database Management System", "C": "Digital Business Management Service", "D": "Direct Binary Memory Storage"},
-                "answer": "B"
+    return [
+        {
+            "question": f"Which best describes the primary definition of {subject}?",
+            "options": {
+                "A": f"It is related to: {summary_sentence}...",
+                "B": "A deprecated hardware protocol from the 1960s",
+                "C": "An unverified speculative philosophy",
+                "D": "A system without any academic or scientific relevance"
             },
-            {
-                "question": "In ACID properties of transactions, what does 'A' stand for?",
-                "options": {"A": "Atomicity", "B": "Accuracy", "C": "Availability", "D": "Authentication"},
-                "answer": "A"
+            "answer": "A"
+        },
+        {
+            "question": f"In academic study, why is {subject} considered essential?",
+            "options": {
+                "A": "It has no practical utility in modern industry",
+                "B": "It establishes structured frameworks and rules for problem solving",
+                "C": "It is only required for elementary school students",
+                "D": "It replaces all fundamental laws of nature"
             },
-            {
-                "question": "Which key uniquely identifies each record in a database table?",
-                "options": {"A": "Foreign Key", "B": "Candidate Key", "C": "Primary Key", "D": "Secondary Key"},
-                "answer": "C"
+            "answer": "B"
+        },
+        {
+            "question": f"What is a primary real-world application of {subject}?",
+            "options": {
+                "A": "Used by engineers, researchers, and professionals to build modern systems",
+                "B": "Only used for decorative purposes",
+                "C": "Restricted strictly to medieval history",
+                "D": "Never applied outside theoretical classrooms"
             },
-            {
-                "question": "What is the main purpose of Database Normalization?",
-                "options": {"A": "Increase data redundancy", "B": "Reduce data redundancy and anomalies", "C": "Slow down query performance", "D": "Encrypt stored tables"},
-                "answer": "B"
+            "answer": "A"
+        },
+        {
+            "question": f"When solving complex problems involving {subject}, what is the best first step?",
+            "options": {
+                "A": "Identify core variables, definitions, and boundary constraints",
+                "B": "Guess the final outcome randomly",
+                "C": "Skip all prerequisite definitions",
+                "D": "Assume standard rules do not apply"
             },
-            {
-                "question": "Which SQL command is used to retrieve data from a database?",
-                "options": {"A": "FETCH", "B": "SELECT", "C": "GET", "D": "RETRIEVE"},
-                "answer": "B"
+            "answer": "A"
+        },
+        {
+            "question": f"How do structured principles in {subject} benefit learners?",
+            "options": {
+                "A": "They create unnecessary confusion",
+                "B": "They ensure repeatability, clarity, and analytical accuracy",
+                "C": "They prevent collaboration across interdisciplinary teams",
+                "D": "They eliminate the need for critical thinking"
             },
-            {
-                "question": "Which of the following is an example of an open-source Relational Database?",
-                "options": {"A": "PostgreSQL", "B": "Redis", "C": "Cassandra", "D": "Neo4j"},
-                "answer": "A"
+            "answer": "B"
+        },
+        {
+            "question": f"Which study technique best verifies a student's mastery of {subject}?",
+            "options": {
+                "A": "The Feynman Technique: explaining the concept simply in your own words",
+                "B": "Rote memorization without understanding core definitions",
+                "C": "Never testing yourself with practice questions",
+                "D": "Reading only chapter titles"
             },
-            {
-                "question": "What type of relationship does a Foreign Key establish?",
-                "options": {"A": "Parent-Child link between two tables", "B": "Encrypts private passwords", "C": "Sorts rows alphabetically", "D": "Compresses database storage"},
-                "answer": "A"
+            "answer": "A"
+        },
+        {
+            "question": f"What distinguishes high-level understanding of {subject} from basic memorization?",
+            "options": {
+                "A": "Knowing 'why' mechanisms function and applying them to new problems",
+                "B": "Reciting text without understanding the context",
+                "C": "Ignoring error handling and edge cases",
+                "D": "Avoiding real-world laboratory exercises"
             },
-            {
-                "question": "Which normal form removes transitive dependencies?",
-                "options": {"A": "1NF", "B": "2NF", "C": "3NF", "D": "0NF"},
-                "answer": "C"
+            "answer": "A"
+        },
+        {
+            "question": f"Why are real-life analogies helpful when learning {subject}?",
+            "options": {
+                "A": "They connect abstract theories to familiar everyday experiences",
+                "B": "They distort scientific definitions",
+                "C": "They are only used in fiction writing",
+                "D": "They slow down learning speed"
             },
-            {
-                "question": "What command permanently saves transaction changes in SQL?",
-                "options": {"A": "ROLLBACK", "B": "COMMIT", "C": "SAVEPOINT", "D": "EXECUTE"},
-                "answer": "B"
+            "answer": "A"
+        },
+        {
+            "question": f"What role does continuous testing play in mastering {subject}?",
+            "options": {
+                "A": "Reinforces long-term memory recall and exposes knowledge gaps",
+                "B": "Causes permanent loss of earlier concepts",
+                "C": "Has no proven cognitive benefit",
+                "D": "Replaces all hands-on practical project work"
             },
-            {
-                "question": "Which level in the 3-schema architecture describes physical storage on disk?",
-                "options": {"A": "Internal Level", "B": "Conceptual Level", "C": "External Level", "D": "View Level"},
-                "answer": "A"
-            }
-        ]
-
-    else:
-        return [
-            {
-                "question": f"What is the foundational principle underlying {passage}?",
-                "options": {
-                    "A": "It establishes standardized rules and structured methodologies for the discipline",
-                    "B": "It only applies to historical manual systems without modern utility",
-                    "C": "It is completely arbitrary and lacks theoretical grounding",
-                    "D": "It replaces all fundamental scientific laws"
-                },
-                "answer": "A"
+            "answer": "A"
+        },
+        {
+            "question": f"What is the recommended next milestone after completing this {subject} quiz?",
+            "options": {
+                "A": "Review incorrect answers and build a structured project roadmap",
+                "B": "Stop learning the subject completely",
+                "C": "Forget foundational definitions immediately",
+                "D": "Switch to an unrelated topic without review"
             },
-            {
-                "question": f"Why is {passage} widely studied across academic curricula?",
-                "options": {
-                    "A": "It has no practical value in research",
-                    "B": "It develops analytical problem-solving and conceptual mastery",
-                    "C": "It is strictly required only for historical preservation",
-                    "D": "It prevents students from using digital computing"
-                },
-                "answer": "B"
-            },
-            {
-                "question": "Which approach is most effective when studying complex concepts?",
-                "options": {
-                    "A": "Rote memorization without understanding",
-                    "B": "Skipping basic prerequisites",
-                    "C": "Breaking concepts into key principles, analogies, and practical exercises",
-                    "D": "Avoiding sample practice problems"
-                },
-                "answer": "C"
-            },
-            {
-                "question": "What is the primary role of systematic testing and quizzes in learning?",
-                "options": {
-                    "A": "Reinforcing retention, detecting knowledge gaps, and building confidence",
-                    "B": "Creating unnecessary academic pressure",
-                    "C": "Replacing hands-on practical project work",
-                    "D": "Slowing down conceptual learning speed"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "How do structured frameworks benefit modern problem-solving?",
-                "options": {
-                    "A": "They ensure repeatability, clarity, and verifiable accuracy",
-                    "B": "They eliminate all need for critical thinking",
-                    "C": "They prevent collaboration across interdisciplinary teams",
-                    "D": "They introduce unnecessary random errors"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "In academic analysis, what is the importance of verifying boundary conditions?",
-                "options": {
-                    "A": "To ensure models remain valid across both extreme and standard cases",
-                    "B": "Boundary conditions have no mathematical impact",
-                    "C": "To unnecessarily complicate simple calculations",
-                    "D": "To force manual re-calculation of constants"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "What distinguishes high-level conceptual understanding from surface familiarity?",
-                "options": {
-                    "A": "The ability to explain 'why' a mechanism works and apply it to novel problems",
-                    "B": "Memorizing superficial definitions without context",
-                    "C": "Reading the textbook index only",
-                    "D": "Avoiding real-world case studies"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "Which method best verifies that a student has mastered a topic?",
-                "options": {
-                    "A": "Teaching or explaining the concept simply to someone else (Feynman Technique)",
-                    "B": "Never reviewing lecture notes",
-                    "C": "Guessing multiple-choice answers randomly",
-                    "D": "Assuming theoretical understanding without practice"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "Why are real-world analogies helpful when learning technical subjects?",
-                "options": {
-                    "A": "They connect unfamiliar abstract rules to familiar everyday experiences",
-                    "B": "They distract from formal mathematical rigor",
-                    "C": "They are only used in elementary schools",
-                    "D": "They distort scientific definitions"
-                },
-                "answer": "A"
-            },
-            {
-                "question": "What is the recommended next step after completing this 10-question quiz?",
-                "options": {
-                    "A": "Review incorrect answers, reinforce weak areas, and build a project roadmap",
-                    "B": "Discontinue further study completely",
-                    "C": "Forget all learned principles immediately",
-                    "D": "Avoid practical lab exercises"
-                },
-                "answer": "A"
-            }
-        ]
+            "answer": "A"
+        }
+    ]

@@ -1,19 +1,46 @@
 import google.generativeai as genai
+import urllib.request
+import urllib.parse
+import json
+import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
+def clean_query(q: str) -> str:
+    s = q.strip()
+    s = re.sub(r'^(what is a|what is an|what is the|what is|what are the|what are|explain|tell me about|define|describe|how does)\s+', '', s, flags=re.I)
+    s = re.sub(r'\?+$', '', s).strip()
+    return s or q.strip()
+
+def fetch_topic_knowledge(query: str):
+    topic = clean_query(query)
+    for q_try in [topic, query]:
+        url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(q_try)
+        req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational app)'})
+        try:
+            with urllib.request.urlopen(req, timeout=4) as res:
+                data = json.loads(res.read().decode('utf-8'))
+                if data.get('extract') and data.get('type') != 'disambiguation':
+                    return data.get('title', topic), data.get('extract')
+        except Exception:
+            continue
+    return topic, None
+
 def get_answer(question: str, api_key: str) -> str:
+    clean_key = (api_key or "").strip().strip('"').strip("'")
+    
     prompt = f"""You are EduGenie, a friendly, warm, and brilliant AI learning assistant (just like ChatGPT, Gemini, and Claude).
 Answer the user's question: "{question}".
 
-Adopt a friendly, encouraging, human tutor tone.
+Adopt a friendly, encouraging human tutor tone.
 Start with a warm greeting: "Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand this!"
 Use clear markdown headings (###), horizontal dividers (---), bullet points with bold keywords, simple everyday analogies, and practical examples (including code blocks if applicable).
 End with an encouraging question asking if they would like to practice or learn more."""
 
-    if api_key:
+    # 1. Try Google Gemini API
+    if clean_key:
         try:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=clean_key)
             for model_name in MODELS:
                 try:
                     model = genai.GenerativeModel(model_name)
@@ -25,6 +52,7 @@ End with an encouraging question asking if they would like to practice or learn 
         except Exception:
             pass
 
+    # 2. Hardcoded rich answers for common questions
     q_lower = question.lower()
     if "python" in q_lower:
         return """Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand Python!
@@ -95,48 +123,49 @@ Instead of keeping messy papers or plain text files, a DBMS stores data neatly i
 
 Would you like to see how we write a simple SQL command to fetch data? Just let me know!"""
 
-    elif "ocean" in q_lower:
-        return """Hello! I am **EduGenie**, your learning assistant. I'm happy to help you explore Earth's geography!
+    # 3. Dynamic Real Knowledge for ANY other question in the world!
+    title, extract = fetch_topic_knowledge(question)
+    if extract:
+        sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 10]
+        points = "\n".join([f"{i+1}. **Key Aspect:** {s}." for i, s in enumerate(sentences[:4])])
+        return f"""Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand **{title}**!
 
 ---
 
-### Which is the largest ocean?
+### What is {title}?
 
-The **Pacific Ocean** is by far the largest and deepest ocean on our planet!
-
-It is so massive that it is actually larger than all of Earth's land continents combined!
+{extract}
 
 ---
 
-### Fascinating Facts About the Pacific Ocean:
+### Key Points to Remember
 
-- **Deepest Point on Earth:** It contains the **Mariana Trench**, plunging nearly 11,000 meters (36,000 feet) down—deep enough to submerge Mount Everest with kilometers of water to spare!
-- **The Ring of Fire:** Most of the world's active volcanoes and earthquakes circle around the Pacific basin.
-- **Covers Over 30% of Earth:** More than one-third of the entire planet's surface is covered by the Pacific!
+{points}
+
+---
+
+### Why is this important for students?
+
+Understanding **{title}** provides fundamental clarity in this discipline, helping connect classroom theory with real-world applications and academic exams.
 
 ***
 
-Would you like to learn about the other four oceans, or explore underwater sea life? Just ask!"""
+Would you like to generate a 10-question quiz on **{title}**, or explore related topics? Just let me know!"""
 
-    else:
-        return f"""Hello! I am **EduGenie**, your learning assistant. I'm happy to help you explore **{question}**!
-
----
-
-### Understanding the Basics
-
-**{question}** is an exciting and fundamental topic. When learning something new, it helps to break it down into simple, bite-sized ideas:
-
-1. **The Core Concept:** At its heart, this topic helps us solve real-world problems and understand how systems work.
-2. **Everyday Analogy:** Think of it like cooking a recipe—following each clear step produces the desired, reliable result every time!
-3. **Real-World Application:** Professionals and researchers use this knowledge daily in engineering, science, and technology.
+    # 4. Clean universal response
+    topic_name = clean_query(question)
+    return f"""Hello! I am **EduGenie**, your learning assistant. I'm happy to help you explore **{topic_name}**!
 
 ---
 
-### Key Takeaway for Your Studies
+### Overview of {topic_name}
 
-Focus on understanding the *why* behind each idea. When you can explain a concept in your own simple words, you truly master it!
+**{topic_name}** is an essential subject in academic study. Breaking it down step by step:
+
+1. **Core Concept:** It provides a structured methodology and set of principles to solve problems in this domain.
+2. **Real-World Application:** Professionals, engineers, and researchers use this knowledge daily to build practical systems.
+3. **Study Strategy:** Focus on mastering the key definitions, working through practice problems, and connecting theory with examples.
 
 ***
 
-Would you like me to share a practical example, quiz you on this, or explain any specific part in more detail? Let me know!"""
+Would you like to test your understanding with a quick quiz on **{topic_name}**? Let me know!"""

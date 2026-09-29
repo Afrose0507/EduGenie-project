@@ -1,8 +1,33 @@
 import google.generativeai as genai
+import urllib.request
+import urllib.parse
+import json
+import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
+def clean_topic(t: str) -> str:
+    s = t.strip()
+    s = re.sub(r'^(what is a|what is an|what is the|what is|what are|explain|tell me about|define|describe)\s+', '', s, flags=re.I)
+    s = re.sub(r'\?+$', '', s).strip()
+    return s or t.strip()
+
+def fetch_concept_knowledge(topic: str):
+    clean = clean_topic(topic)
+    for q_try in [clean, topic]:
+        url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(q_try)
+        req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational app)'})
+        try:
+            with urllib.request.urlopen(req, timeout=4) as res:
+                data = json.loads(res.read().decode('utf-8'))
+                if data.get('extract') and data.get('type') != 'disambiguation':
+                    return data.get('title', clean), data.get('extract')
+        except Exception:
+            continue
+    return clean, None
+
 def explain_concept(topic: str, api_key: str) -> str:
+    clean_key = (api_key or "").strip().strip('"').strip("'")
     prompt = f"""You are EduGenie, a friendly, human-like AI tutor (like ChatGPT, Gemini, Claude).
 Explain the concept: "{topic}".
 
@@ -11,9 +36,10 @@ Start with: "Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to ex
 Use clear markdown headers (###), horizontal lines (---), bullet points with bold keywords, simple real-life analogies, and clear step-by-step examples.
 End with a friendly question asking if they would like to try a quiz or see another example."""
 
-    if api_key:
+    # 1. Try Google Gemini API
+    if clean_key:
         try:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=clean_key)
             for model_name in MODELS:
                 try:
                     model = genai.GenerativeModel(model_name)
@@ -25,6 +51,7 @@ End with a friendly question asking if they would like to try a quiz or see anot
         except Exception:
             pass
 
+    # 2. Hardcoded rich explanations for common concepts
     t_lower = topic.lower()
     if "pythagoras" in t_lower:
         return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **The Pythagoras Theorem** to you today!
@@ -71,50 +98,48 @@ The direct shortcut distance is exactly **5 meters**!
 
 Would you like to try calculating another triangle together, or test yourself with a quick quiz?"""
 
-    elif "photosynthesis" in t_lower:
-        return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **Photosynthesis** to you today!
+    # 3. Dynamic Real Concept Knowledge for ANY topic
+    title, extract = fetch_concept_knowledge(topic)
+    if extract:
+        sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 10]
+        points = "\n".join([f"{i+1}. **Key Principle:** {s}." for i, s in enumerate(sentences[:4])])
+        return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{title}** to you today!
 
 ---
 
-### What is Photosynthesis?
+### What is {title}?
 
-Have you ever wondered how giant trees grow strong and green without ever eating food like humans do?
-
-The secret is **Photosynthesis**! Green plants have the superpower to make their own food completely from scratch using pure sunlight, water, and air.
+{extract}
 
 ---
 
-### The Simple Plant Recipe
+### Core Principles Broken Down Simply
 
-$$\\text{Sunlight} + \\text{Water} + \\text{Carbon Dioxide} \\longrightarrow \\text{Glucose (Plant Food)} + \\text{Oxygen}$$
+{points}
 
-Here is how each plant part acts like a kitchen:
-1. **The Solar Panels (Leaves):** Leaves contain a green substance called **chlorophyll** that traps sunlight energy.
-2. **The Straws (Roots):** Roots soak up water and minerals from deep in the soil.
-3. **The Tiny Noses (Stomata):** Microscopic pores under leaves breathe in carbon dioxide from the air.
-4. **The Gift for Us (Oxygen):** As the plant makes sugary glucose to grow, it breathes out fresh **oxygen** into the atmosphere for humans and animals to breathe!
+---
+
+### Everyday Real-World Analogy
+
+Think of **{title}** like an engineered system: every part has a specific responsibility, working harmoniously together to produce predictable, beneficial outcomes every time!
 
 ***
 
-Isn't nature incredible? Would you like to learn how plants survive at night, or try a fun quiz on this?"""
+Would you like to see another practical example of **{title}**, or take a 10-question quiz to test yourself?"""
 
-    else:
-        return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{topic}** to you today!
-
----
-
-### What is {topic}?
-
-**{topic}** is a fascinating concept! Just like learning how to ride a bike or play an instrument, understanding this topic becomes super simple when we break it down into easy, relatable pieces.
+    clean = clean_topic(topic)
+    return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{clean}** to you today!
 
 ---
 
-### Why is this important?
+### What is {clean}?
 
-1. **Everyday Problem Solving:** It helps us understand how things work in the real world.
-2. **Logical Building Blocks:** Complex technologies all start from simple foundations like this.
-3. **Fun to Apply:** Once you grasp the core idea, you can easily apply it to exams, coding, and science projects!
+**{clean}** is an important concept in your studies! Just like building with Lego blocks, understanding this topic becomes easy when we break it down into simple, manageable pieces:
+
+1. **Foundational Definition:** The core rules and theories that establish what {clean} does.
+2. **Everyday Analogy:** Connects abstract theory to familiar real-world experiences.
+3. **Practical Application:** Solves concrete problems in modern technology, science, and industry.
 
 ***
 
-Would you like to see a fun real-world example of this in action? Just let me know!"""
+Would you like to test your understanding with an interactive quiz on **{clean}**?"""
