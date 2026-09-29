@@ -1,9 +1,5 @@
-import google.generativeai as genai
-import urllib.request
-import json
+import gemini_client
 import re
-
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 SYSTEM_INSTRUCTION = """You are EduGenie, an expert AI learning assistant dedicated exclusively to explaining computer science and engineering concepts clearly to college students.
 
@@ -47,64 +43,9 @@ def is_explanation_relevant(topic: str, explanation: str) -> bool:
         return any(w in e_clean for w in words)
     return True
 
-def call_gemini_explain_sdk(topic: str, api_key: str):
-    try:
-        genai.configure(api_key=api_key)
-        for model_name in MODELS:
-            try:
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=SYSTEM_INSTRUCTION
-                )
-                prompt = f"Please explain the concept of '{topic}' in a clear, structured way for CSE college students with technical mechanisms, analogies, and exam takeaways."
-                response = model.generate_content(prompt)
-                if response and response.text and response.text.strip():
-                    return response.text.strip()
-            except Exception:
-                try:
-                    model = genai.GenerativeModel(model_name=model_name)
-                    combined_prompt = f"{SYSTEM_INSTRUCTION}\n\nExplain the concept of: {topic}"
-                    response = model.generate_content(combined_prompt)
-                    if response and response.text and response.text.strip():
-                        return response.text.strip()
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"[Gemini Explain SDK Error]: {e}")
-    return None
-
-def call_gemini_explain_rest(topic: str, api_key: str):
-    for model_name in ["gemini-1.5-flash", "gemini-2.0-flash"]:
-        payload = {
-            "contents": [{"parts": [{"text": f"{SYSTEM_INSTRUCTION}\n\nExplain the concept of '{topic}' for CSE students."}]}]
-        }
-        data = json.dumps(payload).encode("utf-8")
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            req = urllib.request.Request(
-                url, 
-                data=data, 
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-            )
-            with urllib.request.urlopen(req, timeout=12) as res:
-                res_data = json.loads(res.read().decode("utf-8"))
-                candidates = res_data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts).strip()
-                    if text:
-                        return text
-        except Exception as e:
-            print(f"[Gemini Explain REST Error {model_name}]: {e}")
-    return None
-
 def call_gemini_explain(topic: str, api_key: str):
-    if not api_key:
-        return None
-    res = call_gemini_explain_sdk(topic, api_key)
-    if res:
-        return res
-    return call_gemini_explain_rest(topic, api_key)
+    prompt = f"Please explain the concept of '{topic}' in a clear, structured way for CSE college students with technical mechanisms, analogies, and exam takeaways."
+    return gemini_client.generate_text(prompt, api_key, system_instruction=SYSTEM_INSTRUCTION)
 
 def fallback_explanation(topic: str) -> str:
     t_lower = topic.lower().strip()
@@ -156,44 +97,26 @@ Think of a computer like a busy restaurant:
 5. **Security & Access Control:** Protects system files and prevents unauthorized logins.
 6. **User Interface:** Provides the visual desktop (GUI) or terminal (CLI) for users to interact with."""
 
-    # 3. Pythagoras Theorem
-    if 'pythagoras' in t_lower:
-        return """### 📐 Pythagoras Theorem Explained Simply
-
-**The Core Concept:**
-The Pythagorean Theorem is a fundamental rule in geometry that applies to any **right-angled triangle** (a triangle with one 90° angle).
-
-**The Formula:**
-$$a^2 + b^2 = c^2$$
-
-- **$a$ and $b$** are the two shorter perpendicular sides forming the right angle.
-- **$c$** is the longest side opposite the right angle, called the **hypotenuse**."""
-
-    # 4. Photosynthesis
-    if 'photosynthesis' in t_lower:
-        return """### 🌿 Photosynthesis Explained Simply
+    # 3. Normalization in DBMS
+    if 'normalization' in t_lower or '1nf' in t_lower:
+        return """### 🗄️ Database Normalization Explained Simply
 
 **What is it?**
-Photosynthesis is how green plants, algae, and some bacteria synthesize their own food using sunlight, water, and carbon dioxide.
-
-**The Plant Recipe:**
-$$\\text{Carbon Dioxide} + \\text{Water} + \\text{Light} \\longrightarrow \\text{Glucose (Food)} + \\text{Oxygen}$$"""
-
-    # 5. Cybersecurity
-    if 'cybersecurity' in t_lower:
-        return """### 🛡️ Cybersecurity Explained Simply
-
-**What is it?**
-Cybersecurity is the practice of protecting digital devices, networks, programs, and data from unauthorized access, cyber attacks, and damage.
+Normalization is the process of organizing database tables to reduce data duplication and prevent insertion, update, and deletion anomalies.
 
 ---
 
-### The Castle Analogy:
-Think of a computer network like a medieval castle:
-1. **The Moat (Firewall):** Blocks untrusted visitors and filters network traffic.
-2. **The Castle Gate & Guards (Authentication):** Passwords and multi-factor authentication verify who is entering.
-3. **Secret Language (Encryption):** Sensitive documents are encrypted so that even if a spy steals a letter, they cannot read it.
-4. **Patrol Guards (Antivirus/EDR):** Continuously monitor internal corridors for malware or suspicious behavior."""
+### The Library Analogy:
+Imagine keeping a student's full name, home address, and phone number written on every single book checkout card:
+- If the student moves to a new house, you would have to update 50 different library cards (Update Anomaly)!
+- Instead, you normalize: Keep a **Students Table** with addresses once, and link checkout cards using just their `Student_ID`!
+
+---
+
+### The Three Forms:
+1. **1NF:** Eliminate repeating groups; ensure every field has a single atomic value.
+2. **2NF:** Eliminate partial dependencies; attributes depend on the entire primary key.
+3. **3NF:** Eliminate transitive dependencies; attributes depend only on the primary key, not on other non-key attributes."""
 
     # Clean student-facing notice (Zero Technical/API Details)
     return "EduGenie is temporarily unable to generate an AI explanation. Please try again in a moment."

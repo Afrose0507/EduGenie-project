@@ -1,9 +1,6 @@
-import google.generativeai as genai
-import urllib.request
+import gemini_client
 import json
 import re
-
-MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 SYSTEM_INSTRUCTION = """You are EduGenie, an expert AI learning assistant designed specifically for computer science and engineering college students.
 
@@ -14,8 +11,8 @@ STRICT OPERATIONAL DIRECTIVES:
 2. RESPONSE STRUCTURE (CSE STUDENT-FOCUSED):
    - Definition: Precise, clear academic definition of the subject.
    - Explanation: Deep conceptual explanation using appropriate technical terminology explained simply.
-   - Core Components / Differences: Detailed breakdown, functions, or structured comparison table when comparing concepts (e.g., Process vs Thread).
-   - Real-World Example: Relatable, concrete computing example (e.g., Web browser tabs, word processors, OS kernel).
+   - Core Components / Differences: Detailed breakdown, functions, or structured comparison table when comparing concepts (e.g., Process vs Thread, TCP vs UDP).
+   - Real-World Example: Relatable, concrete computing example (e.g., Database normalization table, network protocols, OS kernel).
    - Short Summary: A memorable student-friendly takeaway suitable for exams and viva.
 3. ABSOLUTE PROHIBITION ON GENERIC FILLER:
    - NEVER use generic phrases such as "This concept is a fundamental topic in its academic discipline", "Review related textbook chapters", or "Prioritize understanding core definitions" in place of the answer.
@@ -24,10 +21,10 @@ STRICT OPERATIONAL DIRECTIVES:
    - Strictly avoid political figures, unrelated facilities (like Utah Data Center), celebrities, or news events unless the student explicitly asks about them.
 5. CALIBRATION:
    - For direct math (e.g., 'What is 15 × 8?'), give the direct answer immediately (e.g., '15 × 8 = 120').
-   - For technical questions (e.g. 'What is the difference between a process and a thread?'), cover all requested parts thoroughly with definitions, differences, examples, and summaries.
-6. SPELLING TOLERANCE: Intelligently understand misspelled terms (e.g. 'proces and thred', 'operatng system') and answer the intended question.
+   - For technical questions, cover all requested parts thoroughly with definitions, differences, examples, and summaries.
+6. SPELLING TOLERANCE: Intelligently understand misspelled terms (e.g. 'normalisation', 'proces and thred', 'operatng system') and answer the intended question.
 7. STATELESSNESS: Treat each question independently without contamination from previous queries.
-8. TONE: Clear, encouraging, technically rigorous, and student-friendly."""
+8. TONE: Clear, encouraging, technically rigorous, and student-focused."""
 
 def evaluate_simple_math(question: str):
     """Directly evaluates simple arithmetic expressions accurately."""
@@ -68,6 +65,12 @@ def is_answer_relevant(question: str, answer: str) -> bool:
         return False
     if 'process' in q_clean and 'thread' in q_clean and ('process' not in a_clean or 'thread' not in a_clean):
         return False
+    if 'normalization' in q_clean and 'normal' not in a_clean and '1nf' not in a_clean:
+        return False
+    if 'tcp' in q_clean and 'udp' in q_clean and ('tcp' not in a_clean or 'udp' not in a_clean):
+        return False
+    if 'binary search' in q_clean and 'binary search' not in a_clean:
+        return False
         
     # Math question validation
     if re.search(r'\d+\s*[\+\-\*\/×÷x]\s*\d+', q_clean):
@@ -90,87 +93,9 @@ def is_answer_relevant(question: str, answer: str) -> bool:
         
     return True
 
-def call_gemini_sdk(prompt: str, api_key: str):
-    """Invokes Google Gemini via official SDK."""
-    try:
-        genai.configure(api_key=api_key)
-        for model_name in MODELS:
-            try:
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=SYSTEM_INSTRUCTION
-                )
-                response = model.generate_content(prompt)
-                if response and response.text and response.text.strip():
-                    return response.text.strip()
-            except Exception as e:
-                try:
-                    model = genai.GenerativeModel(model_name=model_name)
-                    combined_prompt = f"{SYSTEM_INSTRUCTION}\n\nStudent Question: {prompt}"
-                    response = model.generate_content(combined_prompt)
-                    if response and response.text and response.text.strip():
-                        return response.text.strip()
-                except Exception as inner_e:
-                    print(f"[Gemini SDK] Model {model_name} failed: {inner_e}")
-                    continue
-    except Exception as e:
-        print(f"[Gemini SDK Config Error]: {e}")
-    return None
-
-def call_gemini_rest(prompt: str, api_key: str):
-    """Direct HTTP fallback using Google Generative Language REST API."""
-    for model_name in ["gemini-1.5-flash", "gemini-2.0-flash"]:
-        payload = {
-            "contents": [{"parts": [{"text": f"{SYSTEM_INSTRUCTION}\n\nStudent Question: {prompt}"}]}]
-        }
-        data = json.dumps(payload).encode("utf-8")
-        
-        # Method 1: Using x-goog-api-key header
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            req = urllib.request.Request(
-                url, 
-                data=data, 
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key}
-            )
-            with urllib.request.urlopen(req, timeout=12) as res:
-                res_data = json.loads(res.read().decode("utf-8"))
-                candidates = res_data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts).strip()
-                    if text:
-                        return text
-        except Exception as e:
-            print(f"[Gemini REST Header {model_name}]: {e}")
-
-        # Method 2: Using query parameter
-        try:
-            url_param = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            req = urllib.request.Request(url_param, data=data, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=12) as res:
-                res_data = json.loads(res.read().decode("utf-8"))
-                candidates = res_data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts).strip()
-                    if text:
-                        return text
-        except Exception as e:
-            print(f"[Gemini REST Param {model_name}]: {e}")
-            
-    return None
-
 def call_gemini(prompt: str, api_key: str):
-    """Calls Gemini via SDK, with automatic REST fallback."""
-    if not api_key:
-        return None
-    # 1. Try SDK
-    res = call_gemini_sdk(prompt, api_key)
-    if res:
-        return res
-    # 2. Try REST
-    return call_gemini_rest(prompt, api_key)
+    """Invokes Google Gemini with modern models and REST/SDK fallback."""
+    return gemini_client.generate_text(prompt, api_key, system_instruction=SYSTEM_INSTRUCTION)
 
 def fallback_answer(question: str) -> str:
     """Provides high-quality CSE syllabus answers or a clean student-facing notice without generic filler."""
@@ -181,7 +106,182 @@ def fallback_answer(question: str) -> str:
     if math_ans:
         return math_ans
 
-    # 2. Process vs Thread
+    # 2. Normalization in DBMS (1NF, 2NF, 3NF)
+    if 'normalization' in q_lower or 'normal form' in q_lower or ('1nf' in q_lower and '2nf' in q_lower):
+        return r"""### 🗄️ Database Normalization: 1NF, 2NF, and 3NF Explained
+
+---
+
+### 1. What is Normalization?
+**Normalization** is a systematic database design technique in DBMS that organizes tables to **minimize data redundancy** (duplication) and eliminate **undesirable anomalies** (Insertion, Update, and Deletion anomalies).
+
+Without normalization, storing duplicate customer or course data in multiple rows leads to inconsistent records and bloated databases.
+
+---
+
+### 2. First Normal Form (1NF)
+**Rule:** A table is in 1NF if and only if **all attribute values are atomic** (indivisible) and there are **no repeating groups or arrays**.
+
+#### ❌ Unnormalized Example:
+| Student_ID | Student_Name | Courses |
+| :---: | :---: | :---: |
+| 101 | Rahul | DBMS, OS |
+| 102 | Priya | Python, Networks |
+
+*(Violation: The 'Courses' column contains multiple values, not atomic single values).*
+
+#### ✅ Converted to 1NF:
+| Student_ID | Student_Name | Course |
+| :---: | :---: | :---: |
+| 101 | Rahul | DBMS |
+| 101 | Rahul | OS |
+| 102 | Priya | Python |
+| 102 | Priya | Networks |
+
+---
+
+### 3. Second Normal Form (2NF)
+**Rule:** A table is in 2NF if:
+1. It is already in **1NF**.
+2. There are **no Partial Functional Dependencies** (i.e., every non-prime attribute must depend on the **whole** candidate key, not just a part of a composite key).
+
+#### ❌ 1NF Table with Partial Dependency:
+Consider Composite Primary Key: `(Student_ID, Course_ID)`
+| Student_ID (Key) | Course_ID (Key) | Course_Fee |
+| :---: | :---: | :---: |
+| 101 | C101 | \$300 |
+| 102 | C101 | \$300 |
+
+*(Violation: `Course_Fee` depends ONLY on `Course_ID`, not on `Student_ID`. That is a partial dependency!)*
+
+#### ✅ Converted to 2NF (Split into Two Tables):
+- **Table 1 (Enrollment):** `(Student_ID, Course_ID)`
+- **Table 2 (Courses):** `(Course_ID, Course_Fee)`
+
+---
+
+### 4. Third Normal Form (3NF)
+**Rule:** A table is in 3NF if:
+1. It is already in **2NF**.
+2. There is **no Transitive Dependency** (i.e., non-prime attributes must not depend on other non-prime attributes: if $A \rightarrow B$ and $B \rightarrow C$, then $A \rightarrow C$ must be removed).
+
+#### ❌ 2NF Table with Transitive Dependency:
+Primary Key: `Student_ID`
+| Student_ID (Key) | Student_Name | Dept_ID | Dept_Head |
+| :---: | :---: | :---: | :---: |
+| 101 | Rahul | D01 | Dr. Sharma |
+| 102 | Priya | D01 | Dr. Sharma |
+
+*(Violation: `Student_ID` $\rightarrow$ `Dept_ID`, and `Dept_ID` $\rightarrow$ `Dept_Head`. Therefore, `Dept_Head` transitively depends on `Student_ID`).*
+
+#### ✅ Converted to 3NF (Split into Two Tables):
+- **Table 1 (Students):** `(Student_ID, Student_Name, Dept_ID)`
+- **Table 2 (Departments):** `(Dept_ID, Dept_Head)`
+
+---
+
+### 5. Quick Viva Summary:
+- **1NF:** Eliminate repeating multi-valued attributes (Make values **atomic**).
+- **2NF:** 1NF + Eliminate **partial dependencies** (Depend on the *whole* key).
+- **3NF:** 2NF + Eliminate **transitive dependencies** (Depend on *nothing but* the key)."""
+
+    # 3. TCP vs UDP
+    if ('tcp' in q_lower and 'udp' in q_lower) or ('difference between tcp and udp' in q_lower):
+        return """### 🌐 Difference Between TCP and UDP
+
+---
+
+### 1. What is TCP (Transmission Control Protocol)?
+**TCP** is a connection-oriented, reliable transport layer protocol.
+- Before transmitting any data, TCP establishes a connection using a **Three-Way Handshake** (`SYN` $\rightarrow$ `SYN-ACK` $\rightarrow$ `ACK`).
+- It guarantees that all packets arrive in their exact order without corruption, using sequence numbers, checksums, and acknowledgments. If a packet is lost, TCP automatically retransmits it.
+
+---
+
+### 2. What is UDP (User Datagram Protocol)?
+**UDP** is a connectionless, lightweight transport layer protocol.
+- UDP sends independent datagrams directly to the destination without establishing an upfront connection or waiting for acknowledgments.
+- It does **not** guarantee delivery order or retransmit lost packets, making it dramatically faster and having lower latency than TCP.
+
+---
+
+### 3. Key Differences: TCP vs. UDP
+
+| Feature | TCP (Transmission Control Protocol) | UDP (User Datagram Protocol) |
+| :--- | :--- | :--- |
+| **Connection Type** | Connection-Oriented (Requires Handshake) | Connectionless (No Handshake) |
+| **Reliability** | Highly Reliable (Guaranteed delivery & retransmission) | Unreliable (Best-effort delivery, no retransmissions) |
+| **Ordering** | Guarantees packets arrive in exact sequence | Packets may arrive out of order or be dropped |
+| **Speed & Overhead** | Slower (20-60 byte header, acknowledgment overhead) | Ultra Fast (8-byte fixed header, lightweight) |
+| **Flow & Congestion Control** | Supported (Sliding window, congestion avoidance) | None |
+| **Data Boundary** | Byte-stream oriented | Message-oriented (Datagrams) |
+| **Common Protocols** | HTTP/HTTPS (Web), FTP (Files), SMTP (Email), SSH | DNS, DHCP, VoIP, Online Gaming, Live Video Streaming |
+
+---
+
+### 4. Simple Real-World Example:
+- **TCP is like a Certified Phone Call:** You say *"Hello, can you hear me?"* (Handshake). If a sentence is unclear, the other person asks *"Can you repeat that?"* (Acknowledgment & Retransmission).
+- **UDP is like a Live Radio Broadcast or Mail Postcard:** The DJ broadcasts music into the air. If there is static for 1 second, the radio doesn't stop or rewind—it keeps playing live in real time!
+
+---
+
+### 5. Summary (Viva Tip):
+Use **TCP** when **accuracy and complete data** are critical (web pages, banking, emails). Use **UDP** when **speed and low latency** matter more than an occasional dropped frame (live gaming, Zoom calls)."""
+
+    # 4. Binary Search
+    if 'binary search' in q_lower:
+        return """### 🔍 Binary Search Algorithm Explained
+
+---
+
+### 1. What is Binary Search?
+**Binary Search** is an efficient divide-and-conquer search algorithm used to find the position of a target element within a **strictly sorted array**.
+
+Unlike Linear Search (which scans every item one by one with $O(n)$ time complexity), Binary Search achieves **$O(\\log n)$** time complexity by repeatedly halving the search interval.
+
+---
+
+### 2. How Binary Search Works (Step-by-Step):
+1. **Requirement:** The array must be sorted in ascending (or descending) order.
+2. Initialize two pointers: `low = 0` and `high = n - 1`.
+3. Calculate the middle index: `mid = low + (high - low) // 2`.
+4. **Compare Target with `arr[mid]`:**
+   - If `arr[mid] == target`: Element found! Return `mid`.
+   - If `arr[mid] < target`: The target is in the right half $\rightarrow$ Set `low = mid + 1`.
+   - If `arr[mid] > target`: The target is in the left half $\rightarrow$ Set `high = mid - 1`.
+5. Repeat until `low > high` (Element not present).
+
+---
+
+### 3. Concrete Example:
+Search for **Target = 23** in sorted array:
+`arr = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]` ($n = 10$)
+
+- **Pass 1:** `low = 0`, `high = 9`. 
+  `mid = (0 + 9) // 2 = 4` $\rightarrow$ `arr[4] = 16`.
+  Since $23 > 16$, search the right half $\rightarrow$ Set `low = 4 + 1 = 5`.
+
+- **Pass 2:** `low = 5`, `high = 9`.
+  `mid = (5 + 9) // 2 = 7` $\rightarrow$ `arr[7] = 56`.
+  Since $23 < 56$, search the left half $\rightarrow$ Set `high = 7 - 1 = 6`.
+
+- **Pass 3:** `low = 5`, `high = 6`.
+  `mid = (5 + 6) // 2 = 5` $\rightarrow$ `arr[5] = 23`.
+  **Match found!** Target 23 is at index `5` in just **3 comparisons** (Linear search would have taken 6!).
+
+---
+
+### 4. Complexity Analysis:
+- **Best Case:** $O(1)$ (Target is directly at the middle index).
+- **Average & Worst Case:** $O(\\log_2 n)$ (Halves array size each step).
+- **Space Complexity:** $O(1)$ for Iterative implementation, $O(\\log n)$ for Recursive call stack.
+
+---
+
+### 5. Short Viva Summary:
+Binary Search works like looking up a word in a dictionary: you open directly to the middle, decide if your word comes before or after, and discard half the pages instantly!"""
+
+    # 5. Process vs Thread
     if ('process' in q_lower and 'thread' in q_lower) or ('difference between a process and a thread' in q_lower):
         return """### 🔄 Difference Between a Process and a Thread
 
@@ -237,7 +337,41 @@ Because all three tasks share the same browser memory, switching between them is
 - Think of a **Process** as a **House**: It has its own private address, rooms, and fenced boundary.
 - Think of **Threads** as **People living inside that house**: They share the same kitchen, living room, and resources, but each person does a different chore at the exact same time!"""
 
-    # 3. Operating System & Functions
+    # 6. Deadlock in OS
+    if 'deadlock' in q_lower:
+        return r"""### 🔒 Deadlock in Operating Systems
+
+---
+
+### 1. What is a Deadlock?
+A **Deadlock** is an undesirable situation in multi-programming operating systems where a set of concurrent processes are **permanently blocked** because each process holds a resource and waits to acquire another resource held by another process in the set.
+
+None of the processes can run, release their resources, or terminate, causing system throughput to drop to zero.
+
+---
+
+### 2. The 4 Necessary Coffman Conditions for Deadlock:
+All four conditions must hold simultaneously for a deadlock to occur:
+
+1. **Mutual Exclusion:** At least one resource must be held in a non-shareable mode (only one process can use the resource at any given instant).
+2. **Hold and Wait:** A process must currently hold at least one resource and simultaneously wait to acquire additional resources held by other processes.
+3. **No Preemption:** Resources cannot be forcibly seized from a process; a resource can only be released voluntarily after the process finishes execution.
+4. **Circular Wait:** A closed cycle of processes exists $\{P_0, P_1, \\dots, P_n\}$ such that $P_0$ waits for a resource held by $P_1$, $P_1$ waits for $P_2$, ..., and $P_n$ waits for $P_0$.
+
+---
+
+### 3. Classic Real-World Analogy:
+Imagine four cars arriving simultaneously at an unregulated four-way traffic intersection from North, South, East, and West. Each car wants to turn left, blocking the path of the car to its left. No car can move forward without a collision, resulting in a complete gridlock!
+
+---
+
+### 4. Deadlock Handling Strategies:
+1. **Deadlock Prevention:** Design protocols ensuring at least one of the 4 Coffman conditions can never hold.
+2. **Deadlock Avoidance:** Dynamically monitor resource allocation states using algorithms like **Banker's Algorithm** to avoid unsafe states.
+3. **Deadlock Detection & Recovery:** Allow deadlocks to occur, detect cycles using Resource Allocation Graphs (RAG), and recover by terminating processes or preempting resources.
+4. **Deadlock Ignorance (Ostrich Algorithm):** Pretend deadlocks never occur (adopted by general-purpose OS like Windows and Linux due to the rarity of deadlocks vs. the performance cost of prevention)."""
+
+    # 7. Operating System & Functions
     if 'operating system' in q_lower or re.search(r'\bos\b', q_lower):
         return """### 💻 What is an Operating System (OS)?
 
@@ -284,41 +418,7 @@ Without an operating system, a computer cannot function because application prog
 ### Summary:
 The Operating System functions as the traffic controller and resource manager of the computer, ensuring efficient, fair, and secure utilization of system hardware by all programs."""
 
-    # 4. Deadlock in OS
-    if 'deadlock' in q_lower:
-        return """### 🔒 Deadlock in Operating Systems
-
-A **Deadlock** is a state in an operating system where a set of processes are permanently blocked because each process is holding a resource and waiting for another resource acquired by another process.
-
----
-
-### The 4 Coffman Necessary Conditions for Deadlock:
-1. **Mutual Exclusion:** At least one resource must be held in a non-shareable mode (only one process can use it at a time).
-2. **Hold and Wait:** A process must be holding at least one resource and actively waiting to acquire additional resources held by other processes.
-3. **No Preemption:** Resources cannot be forcibly taken from a process; they can only be released voluntarily after the process completes its task.
-4. **Circular Wait:** A closed chain of processes exists such that each process holds at least one resource that is needed by the next process in the cycle (P0 waits for P1, P1 waits for P2 ... Pn waits for P0).
-
----
-
-### Simple Example:
-Two trains approaching each other on the same single railway track. Neither can move forward until the other reverses, leading to a complete standstill!"""
-
-    # 5. ACID Properties in DBMS
-    if 'acid' in q_lower and ('dbms' in q_lower or 'database' in q_lower or 'properties' in q_lower):
-        return """### 💾 ACID Properties in DBMS
-
-In Database Management Systems, **ACID** properties guarantee that database transactions are processed reliably:
-
-1. **Atomicity ("All or Nothing"):**
-   - A transaction must either complete fully or not happen at all. If any step fails (e.g., power loss during money transfer), the entire transaction is rolled back.
-2. **Consistency:**
-   - The database must transition from one valid state to another, maintaining all integrity constraints and rules.
-3. **Isolation:**
-   - Concurrently executing transactions must execute independently without interfering with one another. Intermediate states are invisible to other transactions.
-4. **Durability:**
-   - Once a transaction is committed, its changes are permanently recorded in non-volatile storage, surviving subsequent system failures."""
-
-    # 6. Data Cybersecurity & Cybersecurity
+    # 8. Data Cybersecurity & Cybersecurity
     if 'data cybersecurity' in q_lower or ('data' in q_lower and 'cybersecurity' in q_lower and 'utah' not in q_lower):
         return """### 🛡️ What is Data Cybersecurity?
 
@@ -351,7 +451,7 @@ In Database Management Systems, **ACID** properties guarantee that database tran
 - **Endpoint Security:** Protecting end-user devices (laptops, phones, servers) with EDR and antivirus software.
 - **Cloud Security:** Implementing IAM policies and zero-trust architectures on cloud platforms (AWS, Azure, GCP)."""
 
-    # 7. Photosynthesis
+    # 9. Photosynthesis
     if 'photosynthesis' in q_lower:
         return """### 🌿 What is Photosynthesis?
 
@@ -360,23 +460,20 @@ In Database Management Systems, **ACID** properties guarantee that database tran
 ---
 
 ### Biochemical Equation:
-$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} + \\text{Light Energy} \\longrightarrow \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$$
+$$6\\text{CO}_2 + 6\\text{H}_2\\text{O} + \\text{Light Energy} \\longrightarrow \\text{C}_6\\text{H}_{12}\\text{O}_6 + \\text{Oxygen}$$
 
 The reaction takes place inside **chloroplasts** containing the light-absorbing pigment **chlorophyll**, providing the fundamental source of oxygen and organic nutrients for life on Earth."""
 
-    # 8. Hadoop
+    # 10. Hadoop
     if 'hadoop' in q_lower:
         if 'mode' in q_lower or 'modes' in q_lower:
             return """### 🐘 What are the Modes of Hadoop?
 
 Apache Hadoop operates in **three distinct execution modes**:
 
-1. **Standalone (Local) Mode:**
-   - Default mode running on a single JVM without daemons; uses the local OS file system rather than HDFS. Used primarily for initial testing and debugging MapReduce logic.
-2. **Pseudo-Distributed Mode:**
-   - Runs on a single physical machine simulating an entire cluster. Each Hadoop daemon (NameNode, DataNode, ResourceManager, NodeManager) executes in a separate Java process using HDFS.
-3. **Fully-Distributed Mode:**
-   - Enterprise production environment distributed across multiple physical or cloud server nodes, enabling distributed storage (HDFS) and parallel processing (MapReduce/YARN)."""
+1. **Standalone (Local) Mode:** Default mode running on a single JVM without daemons; uses the local OS file system rather than HDFS. Used primarily for initial testing and debugging MapReduce logic.
+2. **Pseudo-Distributed Mode:** Runs on a single physical machine simulating an entire cluster. Each Hadoop daemon (NameNode, DataNode, ResourceManager, NodeManager) executes in a separate Java process using HDFS.
+3. **Fully-Distributed Mode:** Enterprise production environment distributed across multiple physical or cloud server nodes, enabling distributed storage (HDFS) and parallel processing (MapReduce/YARN)."""
         return """### 🐘 What is Apache Hadoop?
 
 **Apache Hadoop** is an open-source distributed computing framework designed to store and process Big Data across clusters of commodity hardware.
@@ -388,7 +485,7 @@ Apache Hadoop operates in **three distinct execution modes**:
 2. **YARN (Yet Another Resource Negotiator):** Coordinates cluster resources and schedules compute jobs.
 3. **MapReduce:** A parallel programming paradigm dividing jobs into a **Map** phase (filtering/sorting) and a **Reduce** phase (aggregation)."""
 
-    # 9. Python
+    # 11. Python & ML
     if 'python' in q_lower:
         return """### 🐍 What is Python?
 
@@ -401,25 +498,6 @@ Apache Hadoop operates in **three distinct execution modes**:
 - **Multi-Paradigm:** Supports Procedural, Object-Oriented (OOP), and Functional programming styles.
 - **Ecosystem:** Powers Machine Learning (PyTorch, TensorFlow), Data Science (Pandas, NumPy), and Web Backend (FastAPI, Django)."""
 
-    # 10. Machine Learning
-    if 'machine learning' in q_lower or ('ml' in q_lower and len(q_lower.split()) <= 4):
-        return """### 🤖 What is Machine Learning?
-
-**Machine Learning (ML)** is a branch of Artificial Intelligence (AI) focused on building algorithms that learn patterns from historical data to make automated predictions without being explicitly hardcoded.
-
----
-
-### Three Core Paradigms:
-1. **Supervised Learning:** Trained on labeled input-output pairs (e.g., Regression, Classification).
-2. **Unsupervised Learning:** Discovers hidden structures in unlabeled datasets (e.g., K-Means Clustering, PCA).
-3. **Reinforcement Learning:** Agents learn optimal action policies through environmental feedback (rewards and penalties)."""
-
-    # 11. Moon landing
-    if 'moon' in q_lower and ('first' in q_lower or 'walk' in q_lower):
-        return """**Neil Armstrong** was the first human to walk on the Moon. 
-
-He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 11** mission alongside Lunar Module Pilot Buzz Aldrin, famously stating: *"That's one small step for man, one giant leap for mankind."*"""
-
     # 12. Clean Student-Facing Notice (Zero Technical/API Details)
     return "EduGenie is temporarily unable to generate an AI answer. Please try again in a moment."
 
@@ -431,7 +509,7 @@ def get_answer(question: str, api_key: str) -> str:
         
     # Check for ambiguous / incomplete queries
     if len(q_stripped.split()) == 1 and q_stripped.lower() in {'why', 'how', 'what', 'it', 'more', 'tell', 'yes', 'no'}:
-        return f"Could you please specify your question in a bit more detail? For example: *'What is the difference between a process and a thread?'* or *'What is photosynthesis?'*"
+        return f"Could you please specify your question in a bit more detail? For example: *'What is normalization in DBMS?'* or *'What is binary search?'*"
 
     # Math optimization (instant exact computation)
     math_res = evaluate_simple_math(q_stripped)
@@ -440,7 +518,7 @@ def get_answer(question: str, api_key: str) -> str:
 
     clean_key = (api_key or "").strip().strip('"').strip("'")
     
-    # 1. Primary Engine: Google Gemini API (SDK + REST fallback)
+    # 1. Primary Engine: Google Gemini API (Direct REST + SDK fallback)
     if clean_key:
         answer = call_gemini(q_stripped, clean_key)
         
