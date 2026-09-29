@@ -4,10 +4,10 @@ import urllib.error
 import os
 
 MODELS = [
-    "gemini-flash-latest",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-pro-latest"
+    "gemini-2.5-pro",
+    "gemini-flash-latest"
 ]
 
 def generate_text(prompt: str, api_key: str, system_instruction: str = None) -> str:
