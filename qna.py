@@ -3,21 +3,26 @@ import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
-SYSTEM_INSTRUCTION = """You are EduGenie, an expert, reliable AI learning assistant dedicated exclusively to helping students learn.
+SYSTEM_INSTRUCTION = """You are EduGenie, an expert AI learning assistant dedicated exclusively to providing clear, factual, and direct academic answers to students.
 
 STRICT OPERATIONAL DIRECTIVES:
-1. THE STUDENT'S QUESTION IS THE ABSOLUTE AND EXCLUSIVE SOURCE OF TRUTH. Answer ONLY what the student actually asks.
-2. Read and fully understand the student's complete question before formulating your response.
-3. Identify the student's true educational intent. Do NOT change, pivot, or drift to a different topic just because some keywords seem similar.
-4. Under NO circumstances should you introduce unrelated individuals, political figures, specific military/intelligence facilities, or tangential news events (e.g., if asked about 'cybersecurity' or 'data cybersecurity', explain the principles of protecting computer systems and digital data from cyber threats—never mention unrelated facilities like the Utah Data Center or political figures).
-5. Calibrate response length and depth precisely to the question:
-   - For simple direct or arithmetic questions (e.g. 'What is 15 × 8?', 'Who was the first person to walk on the Moon?'), provide an immediate, direct, concise, and accurate answer first (e.g., '15 × 8 = 120').
-   - For academic conceptual questions (e.g. 'What is cybersecurity?', 'What is Hadoop?', 'What is photosynthesis?'), provide a clear, well-structured, student-friendly explanation focusing on definitions, core concepts, and educational examples.
-   - For detailed requests ('Explain in detail...'), provide a comprehensive, step-by-step breakdown.
-6. If the student's question contains typographical or spelling mistakes (e.g., 'cybarsecurity', 'pyton', 'hadop', 'photocynthesis'), intelligently deduce the intended academic concept and answer that intended question directly.
-7. If a question is genuinely ambiguous or too incomplete to understand (e.g. 'it', 'why?', 'tell me more'), politely ask the student for clarification instead of guessing or hallucinating an unrelated topic.
-8. Treat every question as completely fresh and independent. Do NOT let previous questions or topics contaminate the new answer.
-9. Maintain a warm, encouraging, student-friendly tone."""
+1. THE STUDENT'S QUESTION IS THE SOLE SOURCE OF TRUTH. Always answer what the student actually asked first.
+2. RESPONSE PRIORITY & STRUCTURE:
+   - PRIORITY 1: Direct answer to the question with factual definitions and core concepts.
+   - PRIORITY 2: Factual explanation and comprehensive breakdown of the core functions/components (e.g., if asked about an Operating System and its main functions, explicitly name and explain Process Management, Memory Management, File Management, Device Management, Security, and User Interface).
+   - PRIORITY 3: Concrete key points, examples, or technical details when useful.
+   - PRIORITY 4: (Optional) A brief, relevant student study tip ONLY at the very end.
+3. NEVER PRODUCE GENERIC EDUCATIONAL FILLER:
+   - NEVER start with or use generic phrases like "This concept is a fundamental topic in its academic discipline", "Prioritize understanding core definitions", "Review your textbook", or "Practice exam questions" in place of the actual answer.
+   - Always deliver real, factual, domain-specific knowledge immediately in the first paragraph.
+4. CALIBRATION BY QUESTION TYPE:
+   - For arithmetic or direct factual questions (e.g. 'What is 15 × 8?', 'Who was the first person to walk on the Moon?'), provide an immediate, direct, concise, and accurate answer first (e.g., '15 × 8 = 120').
+   - For multi-part conceptual questions (e.g. 'What is an operating system, and what are its main functions?'), address every part of the question factually and thoroughly.
+5. NO TOPIC DRIFT: Under no circumstances introduce unrelated individuals, political figures, specific military/intelligence facilities, or tangential news events.
+6. SPELLING TOLERANCE: If the student's question contains typographical or spelling mistakes (e.g., 'operatng system', 'cybarsecurity', 'pyton', 'hadop'), intelligently deduce the intended academic concept and answer that intended question directly.
+7. AMBIGUOUS QUERIES: If a question is genuinely ambiguous or too incomplete to understand (e.g. 'it', 'why?', 'tell me more'), politely ask the student for clarification instead of guessing or hallucinating an unrelated topic.
+8. STATELESSNESS: Treat every question as completely fresh and independent. Do NOT let previous questions or topics contaminate the new answer.
+9. TONE: Clear, encouraging, objective, and student-focused."""
 
 def evaluate_simple_math(question: str):
     """Directly evaluates simple arithmetic expressions accurately."""
@@ -54,20 +59,25 @@ def is_answer_relevant(question: str, answer: str) -> bool:
         return False
     if 'python' in q_clean and 'python' not in a_clean and 'programming' not in a_clean:
         return False
+    if ('operating system' in q_clean or re.search(r'\bos\b', q_clean)) and 'operating system' not in a_clean and 'os' not in a_clean:
+        return False
         
     # Math question validation
     if re.search(r'\d+\s*[\+\-\*\/×÷x]\s*\d+', q_clean):
-        # Answer must contain numbers
         if not any(c.isdigit() for c in a_clean):
             return False
             
+    # Reject generic boilerplate answers
+    if "this concept is a fundamental topic in its academic discipline" in a_clean:
+        return False
+            
     # Extract significant subject words from question (> 3 chars, ignoring stop words)
     stop_words = {'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how', 'does', 
-                  'explain', 'tell', 'about', 'define', 'give', 'detail', 'detailed', 'mean', 'meaning'}
+                  'explain', 'tell', 'about', 'define', 'give', 'detail', 'detailed', 'mean', 'meaning',
+                  'main', 'functions', 'function', 'and', 'are', 'its'}
     keywords = [w for w in re.findall(r'[a-zA-Z0-9]+', q_clean) if w not in stop_words and len(w) > 2]
     
     if keywords:
-        # At least one major keyword or its direct stem should be addressed in the answer
         found = any(k in a_clean for k in keywords)
         return found
         
@@ -89,7 +99,6 @@ def call_gemini(prompt: str, api_key: str):
                 if response and response.text and response.text.strip():
                     return response.text.strip()
             except Exception as e:
-                # If system_instruction parameter isn't supported on older model version, try without it
                 try:
                     model = genai.GenerativeModel(model_name=model_name)
                     combined_prompt = f"{SYSTEM_INSTRUCTION}\n\nStudent Question: {prompt}"
@@ -103,7 +112,7 @@ def call_gemini(prompt: str, api_key: str):
     return None
 
 def fallback_answer(question: str) -> str:
-    """Educational fallback that strictly answers the exact question without any unrelated topic drift."""
+    """Educational fallback that strictly answers the exact question with real facts, or clearly states AI unavailability."""
     q_lower = question.lower().strip()
     
     # 1. Simple Math
@@ -111,13 +120,60 @@ def fallback_answer(question: str) -> str:
     if math_ans:
         return math_ans
         
-    # 2. Moon landing
+    # 2. Operating System & Functions
+    if 'operating system' in q_lower or re.search(r'\bos\b', q_lower):
+        return """### 💻 What is an Operating System (OS)?
+
+An **Operating System (OS)** is fundamental system software that acts as an intermediary between computer hardware and user applications. It manages the computer's memory, processes, storage, and all connected hardware and software resources.
+
+Without an operating system, a computer cannot function because application programs cannot interact directly with the CPU, physical memory, and storage drives.
+
+---
+
+### Main Functions of an Operating System:
+
+1. **Process Management:**
+   - **Creation & Execution:** Creates, schedules, and terminates user and system processes.
+   - **CPU Scheduling:** Allocates CPU time to active processes using algorithms (e.g., Round Robin, Priority Scheduling, Shortest Job First).
+   - **Synchronization & Deadlock Handling:** Coordinates concurrently running processes to prevent resource conflicts and system deadlocks.
+
+2. **Memory Management (RAM):**
+   - **Allocation & Tracking:** Tracks every byte of primary memory (RAM) and dynamically allocates space to active programs.
+   - **Deallocation:** Frees memory when a program terminates so other applications can use it.
+   - **Virtual Memory:** Extends physical RAM using disk space (paging and swapping) so programs larger than physical memory can run smoothly.
+
+3. **File Management:**
+   - **Storage Organization:** Organizes data into files, folders, and directories on secondary storage (SSD/HDD).
+   - **File Operations:** Handles file creation, reading, writing, renaming, and deletion.
+   - **Access Control:** Enforces file permissions and security attributes using file systems (e.g., NTFS, ext4, FAT32).
+
+4. **Device Management (I/O Management):**
+   - **Hardware Coordination:** Manages communication with input/output peripherals (keyboards, mice, monitors, printers, USB drives).
+   - **Device Drivers:** Uses dedicated driver software to provide a standardized interface between devices and the OS.
+   - **Buffering & Spooling:** Temporarily holds data in buffers (e.g., print spooling) to match differing device transfer speeds.
+
+5. **Security and Protection:**
+   - **Authentication:** Verifies user identity via passwords, PINs, or biometrics.
+   - **Access Control:** Restricts unauthorized users and programs from accessing private files or critical system kernel modules.
+   - **Process Isolation:** Ensures that a crashing or malicious application cannot corrupt the memory space of other programs.
+
+6. **User Interface (UI):**
+   - **Human-Computer Interaction:** Enables users to interact with and control the system.
+   - **GUI (Graphical User Interface):** Provides visual icons, windows, and buttons (e.g., Windows, macOS, Android).
+   - **CLI (Command-Line Interface):** Allows power users to type direct commands (e.g., Linux Terminal, PowerShell).
+
+---
+
+### Summary:
+The Operating System functions as the traffic controller and resource manager of the computer, ensuring efficient, fair, and secure utilization of system hardware by all programs."""
+
+    # 3. Moon landing
     if 'moon' in q_lower and ('first' in q_lower or 'walk' in q_lower):
         return """**Neil Armstrong** was the first person to walk on the Moon. 
 
 He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 11** mission, famously declaring: *"That's one small step for man, one giant leap for mankind."*"""
 
-    # 3. Data Cybersecurity
+    # 4. Data Cybersecurity
     if 'data cybersecurity' in q_lower or ('data' in q_lower and 'cybersecurity' in q_lower and 'utah' not in q_lower):
         return """### 🛡️ What is Data Cybersecurity?
 
@@ -137,7 +193,7 @@ He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 1
 - **Data Breaches:** Unauthorized exfiltration of databases or personal records.
 - **Phishing:** Social engineering attacks tricking users into revealing credentials."""
 
-    # 4. Cybersecurity (General)
+    # 5. Cybersecurity (General)
     if 'cybersecurity' in q_lower and 'utah' not in q_lower:
         return """### 🛡️ What is Cybersecurity?
 
@@ -156,7 +212,7 @@ He stepped onto the lunar surface on **July 20, 1969**, during NASA's **Apollo 1
 ### Why It Matters:
 As academic institutions, businesses, and governments rely heavily on digital platforms, cybersecurity ensures safety against financial theft, service disruption, and privacy violations."""
 
-    # 5. Utah Data Center
+    # 6. Utah Data Center
     if 'utah data center' in q_lower or ('utah' in q_lower and 'center' in q_lower):
         return """### 🏢 What is the Utah Data Center?
 
@@ -170,7 +226,7 @@ The **Utah Data Center** (codenamed **Bumblehive**) is a massive data storage an
 - **Purpose:** Designed to store, process, and analyze massive volumes of satellite communications, intelligence data, and internet traffic.
 - **Scale:** Covers over 1 million square feet, with massive electrical and water-cooling infrastructure required to power its supercomputers."""
 
-    # 6. Hadoop
+    # 7. Hadoop
     if 'hadoop' in q_lower:
         if 'mode' in q_lower or 'modes' in q_lower:
             return """### 🐘 What are the Modes of Hadoop?
@@ -191,7 +247,7 @@ Apache Hadoop operates in **three execution modes**:
 2. **YARN (Yet Another Resource Negotiator):** Coordinates CPU, memory, and task scheduling across the cluster.
 3. **MapReduce:** A parallel programming model that processes vast datasets in two phases: Map (filter/sort) and Reduce (aggregate)."""
 
-    # 7. Photosynthesis
+    # 8. Photosynthesis
     if 'photosynthesis' in q_lower:
         return """### 🌿 What is Photosynthesis?
 
@@ -204,7 +260,7 @@ $$\\text{Carbon Dioxide} + \\text{Water} + \\text{Light} \\longrightarrow \\text
 
 Leaves capture sunlight using the green pigment **chlorophyll**, providing the energy foundation for nearly all life on Earth."""
 
-    # 8. Python
+    # 9. Python
     if 'python' in q_lower:
         return """### 🐍 What is Python?
 
@@ -217,7 +273,7 @@ Leaves capture sunlight using the green pigment **chlorophyll**, providing the e
 - **Versatile:** Powers Web Development (FastAPI, Django), Data Science, Machine Learning (TensorFlow, PyTorch), and Automation.
 - **Batteries-Included:** Rich standard library and vast ecosystem of open-source packages."""
 
-    # 9. Machine Learning
+    # 10. Machine Learning
     if 'machine learning' in q_lower or ('ml' in q_lower and len(q_lower.split()) <= 4):
         return """### 🤖 What is Machine Learning?
 
@@ -230,18 +286,16 @@ Leaves capture sunlight using the green pigment **chlorophyll**, providing the e
 2. **Unsupervised Learning:** Finding hidden patterns in unlabeled data (e.g., customer segmentation, clustering).
 3. **Reinforcement Learning:** Training agents via rewards and penalties through trial and error (e.g., game-playing AI, robotics)."""
 
-    # 10. General On-Topic Educational Response
-    clean_subj = re.sub(r'^(what is a|what is an|what is the|what is|what are the|what are|explain|define|tell me about)\s+', '', question, flags=re.I).strip('? ')
-    return f"""### 📚 Understanding: {clean_subj.title()}
+    # 11. Clear Notification when AI is unavailable for an uncurated topic (NO generic fake answers!)
+    return f"""⚠️ **AI Response Unavailable**
 
-In response to your question regarding **{clean_subj}**:
+EduGenie was unable to generate a live AI response for: *"**{question}**"*
 
-1. **Definition & Core Meaning:** This concept is a fundamental topic in its academic discipline, focusing on how its constituent rules, processes, or mechanisms operate.
-2. **Key Principle:** When studying this topic, prioritize understanding its core definitions, theoretical foundations, and practical problem-solving applications.
-3. **Student Study Tip:** Review related textbook chapters and practice applying the concept to standard exam problems.
+**Reason:** The Google Gemini AI service could not be reached, or the configured API key is invalid/unauthenticated.
 
----
-💡 *Tip:* To receive dynamic generative AI explanations, ensure your Gemini API key is configured!"""
+**How to resolve:**
+1. Ensure your Gemini API key is valid and configured in the application settings or Render environment variables (`GEMINI_API_KEY`).
+2. You can generate a free Gemini API key anytime at [Google AI Studio](https://aistudio.google.com/app/apikey)."""
 
 def get_answer(question: str, api_key: str) -> str:
     """Main answer generator enforcing: Understand Question -> Identify Intent -> Generate -> Check Relevance -> Display."""
@@ -251,7 +305,7 @@ def get_answer(question: str, api_key: str) -> str:
         
     # Check for ambiguous / incomplete queries
     if len(q_stripped.split()) == 1 and q_stripped.lower() in {'why', 'how', 'what', 'it', 'more', 'tell', 'yes', 'no'}:
-        return f"Could you please specify your question in a bit more detail? For example: *'What is photosynthesis?'* or *'How does machine learning work?'*"
+        return f"Could you please specify your question in a bit more detail? For example: *'What is photosynthesis?'* or *'What is an operating system and its main functions?'*"
 
     # Math optimization (instant exact computation)
     math_res = evaluate_simple_math(q_stripped)
@@ -271,14 +325,13 @@ def get_answer(question: str, api_key: str) -> str:
         # 3. If the answer was irrelevant or failed check, REGENERATE with an intensified grounding prompt
         if answer:
             refocus_prompt = (
-                f"CRITICAL RE-GENERATION: The previous response was off-topic. "
-                f"The student asked ONLY: \"{q_stripped}\". "
-                f"Provide a direct, accurate, relevant educational answer strictly about \"{q_stripped}\". "
-                f"Do not mention any unrelated topics, facilities, or people."
+                f"CRITICAL RE-GENERATION: The student asked: \"{q_stripped}\". "
+                f"Directly answer what the student asked first with factual definitions and explanations. "
+                f"Do NOT provide generic filler, and do NOT mention any unrelated topics."
             )
             retry_answer = call_gemini(refocus_prompt, clean_key)
             if retry_answer and is_answer_relevant(q_stripped, retry_answer):
                 return retry_answer
 
-    # 4. Reliable Guaranteed Fallback (Stateless, on-topic, zero unrelated drift)
+    # 4. Factual Fallback or Honest Unavailability Notice (Zero generic template fluff)
     return fallback_answer(q_stripped)
