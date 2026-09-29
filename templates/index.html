@@ -6,13 +6,16 @@
 <title>EduGenie - AI Learning Assistant</title>
 <link rel="stylesheet" href="/static/style.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 <nav class="navbar">
   <div class="nav-brand">🧞 EduGenie</div>
   <div class="nav-subtitle">Google Gemini Powered Learning Assistant</div>
 </nav>
+
 <div class="container">
+  <!-- TABS -->
   <div class="tabs">
     <button class="tab active" onclick="showTab('qa',this)">🤖 Ask a Question</button>
     <button class="tab" onclick="showTab('explain',this)">💡 Explain Concept</button>
@@ -20,53 +23,67 @@
     <button class="tab" onclick="showTab('summarize',this)">📝 Summarize</button>
     <button class="tab" onclick="showTab('learn',this)">🗺️ Learning Path</button>
   </div>
+
+  <!-- Q&A -->
   <div id="qa" class="tab-content active">
     <div class="card">
       <h2>🤖 Ask EduGenie a Question</h2>
-      <p class="subtitle">Get smart, accurate answers on any academic topic</p>
-      <textarea id="qaInput" placeholder="e.g. Which is the largest ocean?"></textarea>
-      <button class="btn" onclick="submit('qa','question',qaInput,'qaResult')">Get Answer</button>
+      <p class="subtitle">Get friendly, smart, conversational answers on any academic topic</p>
+      <textarea id="qaInput" placeholder="e.g. What is Python? Which is the largest ocean? What is DBMS?"></textarea>
+      <button class="btn" onclick="submit('qa','question',qaInput,'qaResult')">Ask EduGenie</button>
       <div id="qaResult" class="result hidden"></div>
     </div>
   </div>
+
+  <!-- EXPLAIN -->
   <div id="explain" class="tab-content">
     <div class="card">
       <h2>💡 Explain a Concept</h2>
-      <p class="subtitle">Get simplified explanations of complex topics</p>
-      <textarea id="explainInput" placeholder="e.g. Pythagoras Theorem, Photosynthesis..."></textarea>
-      <button class="btn" onclick="submit('explain','topic',explainInput,'explainResult')">Explain It</button>
+      <p class="subtitle">Simplified explanations with real-world analogies</p>
+      <textarea id="explainInput" placeholder="e.g. Pythagoras Theorem, Photosynthesis, Gravity..."></textarea>
+      <button class="btn" onclick="submit('explain','topic',explainInput,'explainResult')">Explain Concept</button>
       <div id="explainResult" class="result hidden"></div>
     </div>
   </div>
+
+  <!-- QUIZ -->
   <div id="quiz" class="tab-content">
     <div class="card">
       <h2>❓ Generate Quiz</h2>
       <p class="subtitle">Test your knowledge — 10 MCQs with instant feedback & answers</p>
-      <textarea id="quizInput" placeholder="e.g. Solar System, World War 2..."></textarea>
-      <button class="btn" onclick="submitQuiz()">Generate Quiz</button>
+      <textarea id="quizInput" placeholder="e.g. Python Programming, Database Management, Solar System..."></textarea>
+      <button class="btn" onclick="submitQuiz()">Generate 10-Question Quiz</button>
       <div id="quizResult" class="quiz-container hidden"></div>
     </div>
   </div>
+
+  <!-- SUMMARIZE -->
   <div id="summarize" class="tab-content">
     <div class="card">
       <h2>📝 Summarize Content</h2>
-      <p class="subtitle">Paste any long text and get a concise summary</p>
-      <textarea id="summarizeInput" placeholder="Paste a long paragraph here..." style="height:160px"></textarea>
-      <button class="btn" onclick="submit('summarize','passage',summarizeInput,'summarizeResult')">Summarize</button>
+      <p class="subtitle">Paste any long passage and get key takeaways</p>
+      <textarea id="summarizeInput" placeholder="Paste your study notes or chapter text here..." style="height:160px"></textarea>
+      <button class="btn" onclick="submit('summarize','passage',summarizeInput,'summarizeResult')">Summarize Notes</button>
       <div id="summarizeResult" class="result hidden"></div>
     </div>
   </div>
+
+  <!-- LEARN -->
   <div id="learn" class="tab-content">
     <div class="card">
       <h2>🗺️ Learning Path Generator</h2>
-      <p class="subtitle">Get a personalized roadmap from beginner to advanced</p>
-      <textarea id="learnInput" placeholder="e.g. Python, Machine Learning, SQL..."></textarea>
-      <button class="btn" onclick="submit('learn/recommendations','topic',learnInput,'learnResult')">Get Learning Path</button>
+      <p class="subtitle">Personalized step-by-step roadmap from beginner to advanced</p>
+      <textarea id="learnInput" placeholder="e.g. Python for Beginners, Machine Learning, Web Development..."></textarea>
+      <button class="btn" onclick="submit('learn/recommendations','topic',learnInput,'learnResult')">Generate Roadmap</button>
       <div id="learnResult" class="result hidden"></div>
     </div>
   </div>
 </div>
-<footer>🧞 EduGenie &nbsp;•&nbsp; Powered by Google Gemini &nbsp;•&nbsp; Built for learners everywhere 🌍</footer>
+
+<footer>
+  🧞 EduGenie &nbsp;•&nbsp; Powered by Google Gemini &nbsp;•&nbsp; Built for learners everywhere 🌍
+</footer>
+
 <script>
 function showTab(name,el){
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
@@ -74,6 +91,21 @@ function showTab(name,el){
   document.getElementById(name).classList.add('active');
   el.classList.add('active');
 }
+
+function renderMarkdown(text){
+  if(window.marked && typeof window.marked.parse === 'function'){
+    return window.marked.parse(text);
+  }
+  return text
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,'<em>$1</em>')
+    .replace(/^### (.*$)/gm,'<h3>$1</h3>')
+    .replace(/^## (.*$)/gm,'<h2>$1</h2>')
+    .replace(/^- (.*$)/gm,'<li>$1</li>')
+    .replace(/\n\n/g,'<br><br>')
+    .replace(/\n/g,'<br>');
+}
+
 async function submit(endpoint,fieldName,inputEl,resultId){
   const input=inputEl.value.trim();
   if(!input){alert('Please enter some text first!');return;}
@@ -86,17 +118,18 @@ async function submit(endpoint,fieldName,inputEl,resultId){
   try{
     const res=await fetch('/'+endpoint,{method:'POST',body:formData});
     const data=await res.json();
-    resultEl.innerHTML='<div class="answer">'+marked(data.result)+'</div>';
+    resultEl.innerHTML='<div class="answer">'+renderMarkdown(data.result)+'</div>';
   }catch(e){
     resultEl.innerHTML='<div class="error">❌ Error: '+e.message+'</div>';
   }
 }
+
 async function submitQuiz(){
   const input=document.getElementById('quizInput').value.trim();
   if(!input){alert('Please enter a topic first!');return;}
   const resultEl=document.getElementById('quizResult');
   resultEl.classList.remove('hidden');
-  resultEl.innerHTML='<div class="loading"><div class="spinner"></div> Generating quiz...</div>';
+  resultEl.innerHTML='<div class="loading"><div class="spinner"></div> Generating 10 quiz questions...</div>';
   const formData=new FormData();
   formData.append('passage',input);
   formData.append('api_key','');
@@ -105,7 +138,7 @@ async function submitQuiz(){
     const data=await res.json();
     const questions=data.result;
     if(questions[0]&&questions[0].error){resultEl.innerHTML='<div class="error">❌ '+questions[0].error+'</div>';return;}
-    let html='<h3 style="color:#6366f1;margin-bottom:16px;">📋 Quiz: '+input+'</h3>';
+    let html='<h3 style="color:#6366f1;margin-bottom:16px;">📋 10-Question Quiz: '+input+'</h3>';
     questions.forEach((q,i)=>{
       html+=`<div class="question-card" id="q${i}"><div class="question-text">Q${i+1}. ${q.question}</div><div class="options">`;
       Object.entries(q.options).forEach(([key,val])=>{
@@ -118,28 +151,19 @@ async function submitQuiz(){
     resultEl.innerHTML='<div class="error">❌ Error: '+e.message+'</div>';
   }
 }
+
 function checkAnswer(qIndex,selected,correct){
   const fb=document.getElementById('fb'+qIndex);
   document.querySelectorAll(`#q${qIndex} .option-btn`).forEach(btn=>btn.disabled=true);
   document.getElementById('opt'+qIndex+correct).classList.add('correct');
   if(selected!==correct){
     document.getElementById('opt'+qIndex+selected).classList.add('wrong');
-    fb.innerHTML='❌ Wrong! Correct answer is <strong>'+correct+'</strong>';
+    fb.innerHTML='❌ Wrong! The correct answer is <strong>'+correct+'</strong>';
     fb.className='feedback wrong-fb';
   }else{
     fb.innerHTML='✅ Correct! Well done!';
     fb.className='feedback correct-fb';
   }
-}
-function marked(text){
-  return text
-    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g,'<em>$1</em>')
-    .replace(/^## (.*$)/gm,'<h3>$1</h3>')
-    .replace(/^# (.*$)/gm,'<h2>$1</h2>')
-    .replace(/^- (.*$)/gm,'<li>$1</li>')
-    .replace(/\n\n/g,'<br><br>')
-    .replace(/\n/g,'<br>');
 }
 </script>
 </body>

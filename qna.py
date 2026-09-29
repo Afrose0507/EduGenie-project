@@ -3,25 +3,13 @@ import google.generativeai as genai
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
 def get_answer(question: str, api_key: str) -> str:
-    prompt = f"""You are EduGenie, an advanced AI educational tutor.
-Provide an exhaustive, high-quality, structured response for the question: "{question}".
+    prompt = f"""You are EduGenie, a friendly, warm, and brilliant AI learning assistant (just like ChatGPT, Gemini, and Claude).
+Answer the user's question: "{question}".
 
-You MUST structure your response into the following exact sections with clear markdown headers:
-
-### 📖 Comprehensive Introduction
-(Provide a thorough, well-written introduction explaining what this topic is, its origins/background, and why it matters in academia and industry.)
-
-### ⚡ Quick Summary (Short Answer)
-(A concise, direct 2-3 sentence answer to the question.)
-
-### 🔑 Key Points & Core Principles
-(A detailed bulleted list of 5-8 essential facts, rules, components, or characteristics.)
-
-### 🔬 Deep Dive & In-Depth Explanation
-(A comprehensive, deep explanation breaking down the internal mechanisms, architecture, real-world applications, code/formulas if applicable, and common exam questions.)
-
-### 💡 Practical Takeaways & Summary
-(Final concluding thoughts and learning advice for students.)"""
+Adopt a friendly, encouraging, human tutor tone.
+Start with a warm greeting: "Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand this!"
+Use clear markdown headings (###), horizontal dividers (---), bullet points with bold keywords, simple everyday analogies, and practical examples (including code blocks if applicable).
+End with an encouraging question asking if they would like to practice or learn more."""
 
     if api_key:
         try:
@@ -37,117 +25,118 @@ You MUST structure your response into the following exact sections with clear ma
         except Exception:
             pass
 
-    # High-quality structured fallback answers for exams & demos
     q_lower = question.lower()
     if "python" in q_lower:
-        return """### 📖 Comprehensive Introduction
-Python was created by Guido van Rossum and initially released in 1991. It was designed with a fundamental philosophy emphasizing code readability, developer productivity, and simplicity. Today, Python is the most popular programming language in the world, powering cutting-edge innovations in Artificial Intelligence, Machine Learning, Data Science, Web Applications, and Scientific Computing.
+        return """Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand Python!
 
-### ⚡ Quick Summary (Short Answer)
-Python is an interpreted, high-level, dynamically typed, multi-paradigm programming language celebrated for its clear, English-like syntax and vast library ecosystem.
+---
 
-### 🔑 Key Points & Core Principles
-- **Interpreted Nature:** Code is executed line-by-line via the Python Virtual Machine (PVM), eliminating the need for separate compilation steps.
-- **Dynamic Typing:** Variable types do not need explicit declaration; they are inferred dynamically at runtime.
-- **Batteries-Included Standard Library:** Comes out-of-the-box with modules for networking, math, file I/O, cryptography, and data serialization.
-- **Multi-Paradigm Support:** Allows developers to write Procedural, Object-Oriented (OOP), and Functional code within the same project.
-- **Massive Ecosystem:** Industry standard libraries such as NumPy, Pandas, Scikit-learn, TensorFlow, PyTorch, Django, and FastAPI.
-- **Cross-Platform:** Runs identically across Windows, macOS, Linux, and cloud environments.
+### What is Python?
 
-### 🔬 Deep Dive & In-Depth Explanation
-1. **Memory Management & Garbage Collection:** Python manages memory through private heaps and automatic reference counting paired with a cyclic garbage collector.
-2. **Execution Pipeline:** Source code (`.py`) is compiled into bytecode (`.pyc`), which is executed by the CPython interpreter runtime.
-3. **Application Domains:**
-   - **Machine Learning & AI:** Natural language processing, computer vision, neural networks.
-   - **Backend Web Development:** High-performance asynchronous microservices with FastAPI and full-stack solutions with Django.
-   - **Automation & DevOps:** Scripting infrastructure tasks, data scraping, and API integrations.
+**Python** is a popular computer programming language. Just like humans use languages like English or Spanish to talk to each other, programmers use Python to "talk" to computers and tell them what to do.
+
+It was created in 1991 by a programmer named Guido van Rossum, and he actually named it after a funny British comedy show called *Monty Python's Flying Circus*—not the snake!
+
+---
+
+### Why is Python so great for students?
+
+1. **It looks like English:** Unlike other languages that use lots of confusing symbols and brackets, Python reads very much like plain English. This makes it super easy to learn.
+2. **It is super powerful:** Even though it is simple to read, Python is used by top companies like Google, Netflix, and NASA to build websites, analyze data, and build Artificial Intelligence (AI).
+3. **Huge Community:** Millions of programmers share free code libraries (like NumPy, Pandas, and FastAPI), so you rarely have to start from scratch!
+
+---
+
+### A Simple Example
+
+Imagine you want the computer to greet you. In Python, the code looks like this:
 
 ```python
-# Demonstrating Python Simplicity & List Comprehension
-numbers = [1, 2, 3, 4, 5]
-squares = [x**2 for x in numbers if x % 2 != 0]
-print(f"Odd Squares: {squares}")  # Output: [1, 9, 25]
+print("Hello, World!")
 ```
 
-### 💡 Practical Takeaways & Summary
-Mastering Python provides students with a versatile foundation applicable to software engineering, data analytics, and artificial intelligence. Focus on data structures, object-oriented concepts, and clean coding standards."""
+**What this does:**
+The word `print` simply tells the computer, *"Show this message on the screen."* When you run this code, the computer displays:
+> Hello, World!
+
+***
+
+Would you like to try writing your very own Python code today? Just let me know!"""
 
     elif "dbms" in q_lower or "database" in q_lower:
-        return """### 📖 Comprehensive Introduction
-A Database Management System (DBMS) serves as the critical backbone for modern software systems. Prior to DBMS, organizations relied on flat file-processing systems that suffered from data inconsistency, difficulty in data access, and high redundancy. The introduction of relational database concepts by E.F. Codd in 1970 revolutionized data storage and query retrieval.
+        return """Hello! I am **EduGenie**, your learning assistant. I'm happy to help you understand DBMS!
 
-### ⚡ Quick Summary (Short Answer)
-A Database Management System (DBMS) is specialized system software designed to define, construct, manipulate, and share structured databases securely among multiple users and applications.
+---
 
-### 🔑 Key Points & Core Principles
-- **ACID Properties:** Guarantees Atomicity, Consistency, Isolation, and Durability for every transaction.
-- **Data Independence:** Separates physical storage structure from conceptual views (Three-Schema Architecture).
-- **Reduced Redundancy:** Employs normalization techniques (1NF, 2NF, 3NF, BCNF) to prevent duplicate records.
-- **Concurrency Control:** Manages simultaneous read/write requests without conflict using locking and timestamps.
-- **Data Integrity & Security:** Enforces primary keys, foreign keys, unique constraints, and role-based permissions.
+### What is a DBMS?
 
-### 🔬 Deep Dive & In-Depth Explanation
-1. **Three-Tier Architecture:**
-   - **External Level (View Level):** What end users and applications see.
-   - **Conceptual Level (Logical Level):** Defines entities, relationships, attributes, and constraints.
-   - **Internal Level (Physical Level):** Details how data blocks, B-Trees, and indexes are saved on disk.
-2. **Relational vs Non-Relational (NoSQL):**
-   - **RDBMS (SQL):** MySQL, PostgreSQL, Oracle — structured tables, strict schemas, complex joins.
-   - **NoSQL:** MongoDB, Cassandra, Redis — document, key-value, column-family, and graph data stores.
-3. **Crucial Exam Concepts:**
-   - Primary Key vs Foreign Key relationships.
-   - Transactions, Commit, Rollback, and Deadlock resolution.
-   - Normalization forms to eliminate insertion, deletion, and update anomalies.
+**DBMS** stands for **Database Management System**. Think of it as a super-organized digital filing cabinet with a smart librarian managing it 24/7!
 
-### 💡 Practical Takeaways & Summary
-A solid grasp of DBMS principles, relational algebra, and SQL query optimization is essential for software engineers, backend developers, and database administrators."""
+Instead of keeping messy papers or plain text files, a DBMS stores data neatly in tables (rows and columns) so you can find anything in milliseconds.
+
+---
+
+### Why do we need a DBMS?
+
+1. **No Lost or Duplicate Data:** Eliminates accidental copies and inconsistencies.
+2. **Super Fast Search:** You can query millions of records in a fraction of a second using SQL.
+3. **Safety & Security:** Only authorized users can see private data, and data is protected even if the power cuts out!
+4. **Multi-User Access:** Thousands of people can use apps like Instagram or Amazon at the exact same time without crashing the database.
+
+---
+
+### Popular Examples You Use Everyday
+
+- **MySQL & PostgreSQL:** Powers websites, apps, and online shopping carts.
+- **SQLite:** Built directly inside your smartphone to store your text messages and contacts!
+- **MongoDB:** Stores flexible modern data like posts and comments.
+
+***
+
+Would you like to see how we write a simple SQL command to fetch data? Just let me know!"""
 
     elif "ocean" in q_lower:
-        return """### 📖 Comprehensive Introduction
-Earth is fundamentally a water planet, with oceans covering approximately 71% of its surface and holding 97% of all water. Among these vast bodies of water, the Pacific Ocean stands as the dominant geographical feature of our biosphere, exerting profound influences on global climate patterns, marine biodiversity, and international commerce.
+        return """Hello! I am **EduGenie**, your learning assistant. I'm happy to help you explore Earth's geography!
 
-### ⚡ Quick Summary (Short Answer)
-The Pacific Ocean is the largest and deepest ocean on planet Earth, covering over 60 million square miles (155 million square kilometers) and containing more than 50% of the world's oceanic water.
+---
 
-### 🔑 Key Points & Core Principles
-- **Immense Scale:** Larger than all of Earth's landmasses combined.
-- **Deepest Point:** Houses the **Challenger Deep** inside the Mariana Trench, descending roughly 11,034 meters (36,201 feet) below sea level.
-- **Ring of Fire:** Encircles the Pacific basin, containing roughly 75% of the world's active and dormant volcanoes and 90% of all earthquakes.
-- **Geographic Extent:** Stretches from the Arctic region in the north to the Southern Ocean in the south, bordered by Asia and Australia to the west and the Americas to the east.
-- **Climatic Influence:** Drives global weather phenomenon including El Niño and La Niña oscillations.
+### Which is the largest ocean?
 
-### 🔬 Deep Dive & In-Depth Explanation
-1. **Oceanic Trenches & Plate Tectonics:** The Pacific plate is constantly subducting beneath continental plates, creating deep ocean trenches like the Kermadec, Philippine, and Mariana Trenches.
-2. **Ecological Significance:** The Pacific sustains the Great Barrier Reef, critical pelagic fisheries (tuna, salmon), and unique hydrothermal vent ecosystems flourishing without sunlight.
-3. **Environmental Challenges:** The Great Pacific Garbage Patch, ocean acidification, coral bleaching, and warming surface temperatures demand global conservation action.
+The **Pacific Ocean** is by far the largest and deepest ocean on our planet!
 
-### 💡 Practical Takeaways & Summary
-Studying the Pacific Ocean connects marine biology, physical geography, meteorology, and environmental science."""
+It is so massive that it is actually larger than all of Earth's land continents combined!
+
+---
+
+### Fascinating Facts About the Pacific Ocean:
+
+- **Deepest Point on Earth:** It contains the **Mariana Trench**, plunging nearly 11,000 meters (36,000 feet) down—deep enough to submerge Mount Everest with kilometers of water to spare!
+- **The Ring of Fire:** Most of the world's active volcanoes and earthquakes circle around the Pacific basin.
+- **Covers Over 30% of Earth:** More than one-third of the entire planet's surface is covered by the Pacific!
+
+***
+
+Would you like to learn about the other four oceans, or explore underwater sea life? Just ask!"""
 
     else:
-        return f"""### 📖 Comprehensive Introduction
-**{question}** represents an essential area of study within its respective academic discipline. Understanding this topic provides foundational clarity, enabling learners to contextualize historical developments, practical use cases, and emerging future trends.
+        return f"""Hello! I am **EduGenie**, your learning assistant. I'm happy to help you explore **{question}**!
 
-### ⚡ Quick Summary (Short Answer)
-The topic **{question}** encompasses core principles and operational mechanisms designed to solve practical challenges and establish structured understanding in this field.
+---
 
-### 🔑 Key Points & Core Principles
-- **Core Definition:** Establishes the foundational rules and concepts governing the subject.
-- **Primary Function:** Serves as a standard methodology for analysis, computation, or problem-solving.
-- **Interconnected Elements:** Relies on structured relationships between sub-components to deliver consistent results.
-- **Analytical Value:** Provides a framework used by researchers, engineers, and scholars.
-- **Practical Application:** Applied across modern real-world systems, industry workflows, and educational curricula.
+### Understanding the Basics
 
-### 🔬 Deep Dive & In-Depth Explanation
-1. **Theoretical Architecture:** The subject builds upon well-defined postulates, models, and logical formulations that allow systematic verification.
-2. **Mechanisms & Workflow:**
-   - **Step 1 - Initialization / Problem Formulation:** Identifying the fundamental variables and input conditions.
-   - **Step 2 - Transformation / Process Execution:** Applying governing laws, formulas, or algorithmic steps.
-   - **Step 3 - Output & Evaluation:** Producing verifiable conclusions, data outputs, or practical solutions.
-3. **Common Academic & Exam Focus Areas:**
-   - Understanding key terms and definitions clearly.
-   - Explaining step-by-step problem-solving methodologies.
-   - Comparing advantages, trade-offs, and practical constraints.
+**{question}** is an exciting and fundamental topic. When learning something new, it helps to break it down into simple, bite-sized ideas:
 
-### 💡 Practical Takeaways & Summary
-Review the fundamental definitions, practice working through sample questions, and connect theoretical insights with real-world examples."""
+1. **The Core Concept:** At its heart, this topic helps us solve real-world problems and understand how systems work.
+2. **Everyday Analogy:** Think of it like cooking a recipe—following each clear step produces the desired, reliable result every time!
+3. **Real-World Application:** Professionals and researchers use this knowledge daily in engineering, science, and technology.
+
+---
+
+### Key Takeaway for Your Studies
+
+Focus on understanding the *why* behind each idea. When you can explain a concept in your own simple words, you truly master it!
+
+***
+
+Would you like me to share a practical example, quiz you on this, or explain any specific part in more detail? Let me know!"""
