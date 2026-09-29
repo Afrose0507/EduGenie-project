@@ -1,186 +1,176 @@
 import google.generativeai as genai
-import urllib.request
-import urllib.parse
-import json
 import re
 
 MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
 
-def fetch_world_knowledge(query: str):
-    url = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + urllib.parse.quote(query) + '&utf8=&format=json'
-    req = urllib.request.Request(url, headers={'User-Agent': 'EduGenie/1.0 (educational assistant)'})
+SYSTEM_INSTRUCTION = """You are EduGenie, an expert, friendly AI learning assistant dedicated exclusively to explaining academic concepts to students.
+
+STRICT OPERATIONAL DIRECTIVES:
+1. THE STUDENT'S TOPIC IS THE SOLE SOURCE OF TRUTH. Explain ONLY the concept the student asked for.
+2. Read and fully understand the concept before formulating your explanation.
+3. Identify the true educational intent. Do NOT drift to coincidental keyword matches, unrelated political events, or extraneous entities.
+4. Explain clearly and progressively:
+   - Provide a clear definition and core intuition.
+   - Use simple, relatable everyday analogies.
+   - Outline key principles or step-by-step breakdown.
+   - Highlight why this concept is important in education and practice.
+5. If the student makes a spelling error (e.g., 'pythagras', 'hadop', 'photosyntehsis'), understand the intended academic concept and explain that.
+6. Treat every explanation request as completely independent. Do NOT carry over previous topics.
+7. Maintain a warm, encouraging, student-friendly tone."""
+
+def is_explanation_relevant(topic: str, explanation: str) -> bool:
+    """Validates that the explanation strictly addresses the requested concept."""
+    if not explanation or not explanation.strip():
+        return False
+    t_clean = topic.lower().strip()
+    e_clean = explanation.lower().strip()
+    
+    # Flag known bad drift
+    if ('cybersecurity' in t_clean or 'data cybersecurity' in t_clean) and 'utah' in e_clean:
+        return False
+    if ('cybersecurity' in t_clean or 'data cybersecurity' in t_clean) and 'trump' in e_clean:
+        return False
+        
+    stop_words = {'what', 'is', 'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'explain', 'tell', 'about', 'define'}
+    words = [w for w in re.findall(r'[a-zA-Z0-9]+', t_clean) if w not in stop_words and len(w) > 2]
+    if words:
+        return any(w in e_clean for w in words)
+    return True
+
+def call_gemini_explain(topic: str, api_key: str):
+    if not api_key:
+        return None
     try:
-        with urllib.request.urlopen(req, timeout=5) as res:
-            data = json.loads(res.read().decode('utf-8'))
-            results = data.get('query', {}).get('search', [])
-            if results:
-                best_title = results[0]['title']
-                sum_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(best_title)
-                sreq = urllib.request.Request(sum_url, headers={'User-Agent': 'EduGenie/1.0'})
-                with urllib.request.urlopen(sreq, timeout=5) as sres:
-                    sdata = json.loads(sres.read().decode('utf-8'))
-                    if sdata.get('extract') and sdata.get('type') != 'disambiguation':
-                        return sdata.get('title'), sdata.get('extract')
-    except Exception as e:
-        print(f"Concept fetch error: {e}")
-    return None, None
-
-def explain_concept(topic: str, api_key: str) -> str:
-    clean_key = (api_key or "").strip().strip('"').strip("'")
-    prompt = f"""You are EduGenie, a friendly, human-like AI tutor (like ChatGPT, Gemini, Claude).
-Explain the concept: "{topic}".
-
-Adopt an engaging, conversational, friendly tone.
-Start with: "Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{topic}** to you today!"
-Use clear markdown headers (###), horizontal lines (---), bullet points with bold keywords, simple real-life analogies, and clear step-by-step examples.
-End with a friendly question asking if they would like to try a quiz or see another example."""
-
-    # 1. Try Google Gemini API
-    if clean_key and clean_key.startswith("AIzaSy"):
-        try:
-            genai.configure(api_key=clean_key)
-            for model_name in MODELS:
+        genai.configure(api_key=api_key)
+        for model_name in MODELS:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    system_instruction=SYSTEM_INSTRUCTION
+                )
+                prompt = f"Please explain the concept of '{topic}' in a clear, educational, beginner-friendly way with analogies."
+                response = model.generate_content(prompt)
+                if response and response.text and response.text.strip():
+                    return response.text.strip()
+            except Exception:
                 try:
-                    model = genai.GenerativeModel(model_name)
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        return response.text
-                except Exception as err:
-                    print(f"Gemini {model_name} error: {err}")
+                    model = genai.GenerativeModel(model_name=model_name)
+                    combined_prompt = f"{SYSTEM_INSTRUCTION}\n\nExplain the concept of: {topic}"
+                    response = model.generate_content(combined_prompt)
+                    if response and response.text and response.text.strip():
+                        return response.text.strip()
+                except Exception:
                     continue
-        except Exception as err:
-            print(f"Genai config error: {err}")
+    except Exception as e:
+        print(f"Gemini explain error: {e}")
+    return None
 
-    t_lower = topic.lower()
+def fallback_explanation(topic: str) -> str:
+    t_lower = topic.lower().strip()
+    
+    # 1. Pythagoras Theorem
+    if 'pythagoras' in t_lower:
+        return """### 📐 Pythagoras Theorem Explained Simply
 
-    if "hadoop" in t_lower and ("mode" in t_lower or "modes" in t_lower):
-        return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain the **Modes of Hadoop** to you today!
+**The Core Concept:**
+The Pythagorean Theorem is a fundamental rule in geometry that applies to any **right-angled triangle** (a triangle with one 90° angle).
 
----
-
-### What are Hadoop Execution Modes?
-
-Imagine you are cooking for a huge party. You can:
-1. Cook alone in your personal kitchen (Standalone Mode)
-2. Pretend to run a restaurant by setting up 3 cooking stations in your kitchen (Pseudo-Distributed Mode)
-3. Run an actual massive banquet across 10 kitchens with 10 chefs (Fully-Distributed Mode)
-
-Hadoop operates in the exact same three ways:
-
----
-
-### 1. Standalone (Local) Mode
-- **Analogy:** Doing the whole project on your laptop with no extra setup.
-- **Execution:** Runs as a single Java process on one computer.
-- **File System:** Uses your normal C: or D: drive instead of HDFS.
-- **Purpose:** Ideal for students writing and debugging their first MapReduce programs without needing complex servers.
-
----
-
-### 2. Pseudo-Distributed Mode
-- **Analogy:** Simulating a company network on a single computer.
-- **Execution:** Runs all Hadoop daemons (NameNode, DataNode, ResourceManager) in separate Java processes on one machine.
-- **File System:** Uses real HDFS on your local machine.
-- **Purpose:** Testing cluster behavior before deploying to real physical hardware.
-
----
-
-### 3. Fully-Distributed Mode
-- **Analogy:** A real enterprise data center with hundreds of server racks.
-- **Execution:** Dedicated Master servers coordinate thousands of worker servers.
-- **File System:** Distributed across racks with automatic 3x data replication for bulletproof fault tolerance.
-- **Purpose:** Enterprise production processing Petabytes of data (e.g., Netflix recommendations, Amazon shopping analytics).
-
-***
-
-Would you like to try a 10-question quiz on Hadoop, or see how MapReduce works?"""
-
-    elif "pythagoras" in t_lower:
-        return """Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **The Pythagoras Theorem** to you today!
-
----
-
-### What is the Pythagoras Theorem?
-
-Imagine you are standing at the corner of a square park. You want to get to the opposite corner. 
-
-Do you walk along the two outside sidewalks, or do you take the diagonal shortcut right across the grass? 
-
-Taking the diagonal shortcut is always faster! The **Pythagoras Theorem** is the magical math rule that tells you *exactly* how long that shortcut is.
-
----
-
-### The Golden Rule
-
-In any triangle that has a **90-degree right angle** (like the corner of a book or a room):
-
+**The Formula:**
 $$a^2 + b^2 = c^2$$
 
-- **$a$ and $b$** are the two straight sides forming the corner.
-- **$c$** is the long diagonal shortcut, called the **hypotenuse**.
+- **$a$ and $b$** are the two shorter perpendicular sides forming the right angle.
+- **$c$** is the longest side opposite the right angle, called the **hypotenuse**.
 
 ---
 
-### A Simple Everyday Example
+### Everyday Real-World Analogy:
+Imagine walking along two sides of a square park: 3 meters East, then 4 meters North. Instead of walking $3 + 4 = 7$ meters, you take the diagonal shortcut across the grass:
+$$\\sqrt{3^2 + 4^2} = \\sqrt{9 + 16} = \\sqrt{25} = 5 \\text{ meters!}$$
+The shortcut is 5 meters. The Pythagorean Theorem lets you calculate diagonal distances in architecture, GPS navigation, and construction!"""
 
-Let's say you walk:
-- **3 meters** East ($a = 3$)
-- **4 meters** North ($b = 4$)
+    # 2. Photosynthesis
+    if 'photosynthesis' in t_lower:
+        return """### 🌿 Photosynthesis Explained Simply
 
-How far are you directly from your starting point ($c$)?
+**What is it?**
+Photosynthesis is how green plants, algae, and some bacteria synthesize their own food using sunlight, water, and carbon dioxide.
 
-1. Square the first number: $3 \\times 3 = 9$
-2. Square the second number: $4 \\times 4 = 16$
-3. Add them together: $9 + 16 = 25$
-4. Find the square root: $\\sqrt{25} = 5$ meters!
-
-The direct shortcut distance is exactly **5 meters**!
-
-***
-
-Would you like to try calculating another triangle together, or test yourself with a quick quiz?"""
-
-    # Dynamic concept search for ANY topic
-    title, extract = fetch_world_knowledge(topic)
-    if extract:
-        sentences = [s.strip() for s in extract.replace("\n", " ").split(".") if len(s.strip()) > 8]
-        points = "\n".join([f"- **Key Principle {i+1}:** {s}." for i, s in enumerate(sentences[:4])])
-        return f"""Hello! I am **EduGenie**, your friendly AI tutor. I'm excited to explain **{title}** to you today!
+**The Plant Recipe:**
+$$\\text{Carbon Dioxide} + \\text{Water} + \\text{Light} \\longrightarrow \\text{Glucose (Food)} + \\text{Oxygen}$$
 
 ---
 
-### What is {title}?
+### The Kitchen Analogy:
+1. **Solar Panels (Leaves):** Green chlorophyll pigments capture energy from sunlight.
+2. **Plumbing (Roots):** Roots draw water and minerals from the soil.
+3. **Air Vents (Stomata):** Pores under the leaves absorb carbon dioxide from the air.
+4. **The Meal & The Gift:** The plant produces sugary glucose to fuel its growth, and releases clean oxygen into the atmosphere for humans and animals to breathe!"""
 
-{extract}
+    # 3. Data Cybersecurity / Cybersecurity
+    if 'cybersecurity' in t_lower:
+        return """### 🛡️ Cybersecurity Explained Simply
 
----
-
-### Core Principles Broken Down Simply
-
-{points}
-
----
-
-### Everyday Real-World Analogy
-
-Think of **{title}** like an engineered system: every part has a specific responsibility, working harmoniously together to produce predictable, beneficial outcomes every time!
-
-***
-
-Would you like to see another practical example of **{title}**, or take a 10-question quiz to test yourself?"""
-
-    return f"""Hello! I am **EduGenie**, your friendly AI tutor!
+**What is it?**
+Cybersecurity is the practice of protecting digital devices, networks, programs, and data from unauthorized access, cyber attacks, and damage.
 
 ---
 
-### Regarding: "{topic}"
+### The Castle Analogy:
+Think of a computer network like a medieval castle:
+1. **The Moat (Firewall):** Blocks untrusted visitors and filters network traffic.
+2. **The Castle Gate & Guards (Authentication):** Passwords and multi-factor authentication verify who is entering.
+3. **Secret Language (Encryption):** Sensitive documents are encrypted so that even if a spy steals a letter, they cannot read it.
+4. **Patrol Guards (Antivirus/EDR):** Continuously monitor internal corridors for malware or suspicious behavior."""
 
-This concept touches upon important academic and real-world principles.
+    # 4. Hadoop
+    if 'hadoop' in t_lower:
+        return """### 🐘 Apache Hadoop Explained Simply
 
-To receive live, unlimited AI explanations for every single concept from the entire world:
-1. Ensure your Gemini API Key starting with `AIzaSy...` is set in Render Environment Variables, OR
-2. Click the **"🔑 AI Key"** button at the top right of this page and paste your `AIzaSy...` key once!
+**What is it?**
+Apache Hadoop is a distributed software framework designed to store and process massive datasets (Big Data) across clusters of regular computers.
 
-***
+---
 
-Would you like to try another concept or generate a study quiz?"""
+### The Teamwork Analogy:
+Imagine counting 1,000,000 voter ballots alone. It would take weeks! Instead, you hire 100 assistants:
+- Each person receives 10,000 ballots to count in parallel (the **Map** phase).
+- A coordinator combines all 100 individual totals into one final count (the **Reduce** phase).
+
+This is exactly how Hadoop MapReduce works, with **HDFS** storing the data safely across all 100 computers!"""
+
+    # General concept
+    clean_subj = re.sub(r'^(what is a|what is an|what is the|what is|what are the|what are|explain|define|tell me about)\s+', '', topic, flags=re.I).strip('? ')
+    return f"""### 💡 Understanding: {clean_subj.title()}
+
+**Concept Overview:**
+**{clean_subj}** represents a fundamental educational subject. Breaking it down step by step:
+
+1. **Core Meaning:** It describes specific principles, methodologies, and rules governing how systems or phenomena behave.
+2. **Everyday Analogy:** Think of it like building blocks—each individual piece connects systematically to support larger, complex structures.
+3. **Practical Application:** Mastering this concept equips students to solve practical problems, understand academic literature, and excel in coursework examinations.
+
+---
+💡 *Tip:* To receive dynamic generative AI explanations, ensure your Gemini API key is configured!"""
+
+def explain_concept(topic: str, api_key: str) -> str:
+    t_stripped = (topic or "").strip()
+    if not t_stripped:
+        return "Please enter an educational concept for EduGenie to explain!"
+        
+    clean_key = (api_key or "").strip().strip('"').strip("'")
+    
+    # 1. Primary: Google Gemini API
+    if clean_key:
+        explanation = call_gemini_explain(t_stripped, clean_key)
+        if explanation and is_explanation_relevant(t_stripped, explanation):
+            return explanation
+            
+        # 2. Regeneration if off-topic
+        if explanation:
+            retry_prompt = f"CRITICAL RE-GENERATION: Explain ONLY the educational concept: '{t_stripped}'. Do NOT mention any unrelated topics or external controversies."
+            retry_explanation = call_gemini_explain(retry_prompt, clean_key)
+            if retry_explanation and is_explanation_relevant(t_stripped, retry_explanation):
+                return retry_explanation
+                
+    # 3. Fallback
+    return fallback_explanation(t_stripped)
