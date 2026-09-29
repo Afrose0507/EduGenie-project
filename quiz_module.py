@@ -10,7 +10,7 @@ def clean_json_block(text: str) -> str:
 def generate_quiz(passage: str, api_key: str):
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        model = genai.GenerativeModel("gemini-pro")
         prompt = f"""Generate exactly 3 multiple-choice questions from: "{passage}"
 Each question must have 4 options (A,B,C,D) and one correct answer.
 Return ONLY valid JSON like this:
