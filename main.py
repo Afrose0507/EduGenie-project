@@ -38,71 +38,45 @@ async def api_diagnose():
         "has_whitespace": bool(API_KEY and (" " in API_KEY or "\n" in API_KEY or "\r" in API_KEY or "\t" in API_KEY)),
     }
     
-    # 1. Test SDK with gemini-2.5-flash
+    # 1. Test gemini_client.generate_text directly
     try:
-        genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        res = model.generate_content("What is Generative AI in one short sentence?")
-        diag["sdk_result"] = "SUCCESS: " + (res.text[:150] if res and res.text else "empty")
+        from gemini_client import generate_text
+        direct_ans = generate_text("What is Artificial Intelligence in one short sentence?", API_KEY)
+        diag["direct_generate_text_result"] = f"SUCCESS: {direct_ans[:200]}" if direct_ans else "RETURNED_NONE"
     except Exception as e:
-        diag["sdk_result"] = f"ERROR ({type(e).__name__}): {str(e)}"
-        
-    # 2. Test REST with x-goog-api-key header on gemini-2.5-flash
+        diag["direct_generate_text_result"] = f"ERROR: {str(e)}"
+
+    # 2. Test REST with x-goog-api-key header on gemini-3.8-flash
     try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-        payload = json.dumps({"contents": [{"parts": [{"text": "What is Generative AI in one short sentence?"}]}]}).encode("utf-8")
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+        payload = json.dumps({"contents": [{"parts": [{"text": "What is Artificial Intelligence in one sentence?"}]}]}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "x-goog-api-key": API_KEY})
-        with urllib.request.urlopen(req, timeout=12) as r:
+        with urllib.request.urlopen(req, timeout=25) as r:
             body = r.read().decode("utf-8")
             res_json = json.loads(body)
             parts = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-            text = "".join(p.get("text", "") for p in parts)
-            diag["rest_header_result"] = f"SUCCESS ({r.status}): {text[:200]}"
+            text = "".join(p.get("text", "") for p in parts if not p.get("thought", False))
+            if not text:
+                text = "".join(p.get("text", "") for p in parts)
+            diag["gemini_3_8_rest_header"] = f"SUCCESS ({r.status}): {text[:200]}"
     except urllib.error.HTTPError as e:
-        diag["rest_header_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+        diag["gemini_3_8_rest_header"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
     except Exception as e:
-        diag["rest_header_result"] = f"ERROR: {str(e)}"
+        diag["gemini_3_8_rest_header"] = f"ERROR: {str(e)}"
 
-    # 3. Test REST with ?key= query parameter on gemini-2.5-flash
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
-        payload = json.dumps({"contents": [{"parts": [{"text": "What is Generative AI in one short sentence?"}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=12) as r:
-            body = r.read().decode("utf-8")
-            res_json = json.loads(body)
-            parts = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-            text = "".join(p.get("text", "") for p in parts)
-            diag["rest_query_result"] = f"SUCCESS ({r.status}): {text[:200]}"
-    except urllib.error.HTTPError as e:
-        diag["rest_query_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
-    except Exception as e:
-        diag["rest_query_result"] = f"ERROR: {str(e)}"
-
-    # 4. Test REST with Authorization: Bearer
-    try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-        payload = json.dumps({"contents": [{"parts": [{"text": "Test ping"}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            body = r.read().decode("utf-8")
-            diag["rest_bearer_result"] = f"SUCCESS ({r.status}): {body[:150]}"
-    except urllib.error.HTTPError as e:
-        diag["rest_bearer_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
-    except Exception as e:
-        diag["rest_bearer_result"] = f"ERROR: {str(e)}"
-
-    # 5. Test Models List endpoint
+    # 3. Test Models List endpoint and list available generate models
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=15) as r:
             body = r.read().decode("utf-8")
-            diag["models_list_result"] = f"SUCCESS ({r.status}): {body[:150]}"
+            data = json.loads(body)
+            models = [m.get("name") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+            diag["models_list_available"] = models[:10]
     except urllib.error.HTTPError as e:
-        diag["models_list_result"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
+        diag["models_list_available"] = f"HTTP {e.code}: {e.read().decode('utf-8')[:300]}"
     except Exception as e:
-        diag["models_list_result"] = f"ERROR: {str(e)}"
+        diag["models_list_available"] = f"ERROR: {str(e)}"
 
     return diag
 

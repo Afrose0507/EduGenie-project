@@ -4,10 +4,14 @@ import urllib.error
 import os
 
 MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.5-pro",
-    "gemini-flash-latest"
+    "gemini-2.0-flash"
 ]
 
 def generate_text(prompt: str, api_key: str, system_instruction: str = None) -> str:
@@ -48,12 +52,16 @@ def generate_text(prompt: str, api_key: str, system_instruction: str = None) -> 
                 },
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=15) as res:
+            with urllib.request.urlopen(req, timeout=30) as res:
                 res_data = json.loads(res.read().decode("utf-8"))
                 candidates = res_data.get("candidates", [])
                 if candidates:
                     parts = candidates[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts).strip()
+                    # Filter out internal reasoning parts (thought: True) on Gemini 3 models
+                    text_parts = [p.get("text", "") for p in parts if not p.get("thought", False)]
+                    text = "".join(text_parts).strip()
+                    if not text:
+                        text = "".join(p.get("text", "") for p in parts).strip()
                     if text:
                         return text
         except urllib.error.HTTPError as e:
@@ -71,12 +79,15 @@ def generate_text(prompt: str, api_key: str, system_instruction: str = None) -> 
                 headers={"Content-Type": "application/json"},
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=15) as res:
+            with urllib.request.urlopen(req, timeout=30) as res:
                 res_data = json.loads(res.read().decode("utf-8"))
                 candidates = res_data.get("candidates", [])
                 if candidates:
                     parts = candidates[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts).strip()
+                    text_parts = [p.get("text", "") for p in parts if not p.get("thought", False)]
+                    text = "".join(text_parts).strip()
+                    if not text:
+                        text = "".join(p.get("text", "") for p in parts).strip()
                     if text:
                         return text
         except urllib.error.HTTPError as e:
